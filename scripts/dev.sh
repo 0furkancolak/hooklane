@@ -18,6 +18,14 @@ for tool in docker go npm; do
   command -v "$tool" >/dev/null || die "$tool is required but not installed"
 done
 
+# A GOROOT exported for a different Go install makes `go` mix toolchains
+# ("compile: version ... does not match go tool version"). Let the go on PATH
+# use its own root instead.
+if [ -n "${GOROOT:-}" ] && [ "$(GOROOT='' go env GOROOT)" != "$GOROOT" ]; then
+  log "ignoring GOROOT=$GOROOT; it does not belong to $(command -v go)"
+  unset GOROOT
+fi
+
 # --- configuration ---------------------------------------------------------
 
 random_key() {
