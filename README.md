@@ -17,6 +17,7 @@ delivered and lets you replay it, all on PostgreSQL alone.
 ## Quick start
 
 Requirements: Docker with Compose, `openssl` and `curl`.
+To work on Hooklane itself, see [Development](#development) for `make dev`.
 
 ```sh
 git clone https://github.com/0furkancolak/hooklane.git && cd hooklane
@@ -268,7 +269,17 @@ Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Development
 
-Copy `.env.example` to `.env`, set `ENDPOINT_SECRET_KEY` (`openssl rand -base64 32`), and load it into your shell with `set -a; . ./.env; set +a`.
+Start everything with one command (needs Docker, Go and Node.js):
+
+```sh
+make dev
+```
+
+It creates `.env` from `.env.example` with a generated `ENDPOINT_SECRET_KEY` if missing, starts PostgreSQL, applies migrations, and runs the API, the worker and the dashboard with prefixed output. On an empty database it also bootstraps a development organization and saves its API key to `.dev/api-key` (readable only by you). Open http://127.0.0.1:5173 and sign in with that key. Ctrl+C stops the processes; PostgreSQL keeps running until `make db-down`.
+
+The API uses `PORT` (default 8080), or the next free port if it is taken. Variables set on the command line win over `.env`, for example `PORT=9000 make dev`. The local stack always runs with `APP_ENV=development`.
+
+To run the pieces separately instead, copy `.env.example` to `.env`, set `ENDPOINT_SECRET_KEY` (`openssl rand -base64 32`), and load it into your shell with `set -a; . ./.env; set +a`.
 
 PostgreSQL listens on `127.0.0.1:5433` by default; override with `POSTGRES_PORT`.
 
