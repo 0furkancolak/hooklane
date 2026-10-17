@@ -216,6 +216,40 @@ func (q *Queries) CreateReplayDelivery(ctx context.Context, originalID pgtype.UU
 	return i, err
 }
 
+const deliveryStatsByProject = `-- name: DeliveryStatsByProject :one
+SELECT count(*) FILTER (WHERE d.status = 'pending')::bigint AS pending,
+       count(*) FILTER (WHERE d.status = 'processing')::bigint AS processing,
+       count(*) FILTER (WHERE d.status = 'succeeded')::bigint AS succeeded,
+       count(*) FILTER (WHERE d.status = 'dead_letter')::bigint AS dead_letter,
+       min(d.next_attempt_at) FILTER (WHERE d.status = 'pending' AND d.next_attempt_at <= now() AND en.enabled)::timestamptz AS oldest_due_at
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE en.project_id = $1
+`
+
+type DeliveryStatsByProjectRow struct {
+	Pending     int64
+	Processing  int64
+	Succeeded   int64
+	DeadLetter  int64
+	OldestDueAt pgtype.Timestamptz
+}
+
+// oldest_due_at ignores disabled endpoints: workers do not claim their
+// deliveries, so they are held rather than late.
+func (q *Queries) DeliveryStatsByProject(ctx context.Context, projectID pgtype.UUID) (DeliveryStatsByProjectRow, error) {
+	row := q.db.QueryRow(ctx, deliveryStatsByProject, projectID)
+	var i DeliveryStatsByProjectRow
+	err := row.Scan(
+		&i.Pending,
+		&i.Processing,
+		&i.Succeeded,
+		&i.DeadLetter,
+		&i.OldestDueAt,
+	)
+	return i, err
+}
+
 const getDelivery = `-- name: GetDelivery :one
 SELECT d.id, d.event_id, d.endpoint_id, p.organization_id, d.status, d.attempt_count,
        d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
@@ -340,4 +374,149 @@ func (q *Queries) ListDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID
 		return nil, err
 	}
 	return items, nil
+}
+
+const listDeliveriesByProject = `-- name: ListDeliveriesByProject :many
+SELECT d.id, d.event_id, d.endpoint_id, d.status, d.attempt_count,
+       d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
+       d.created_at, d.updated_at
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE en.project_id = $1
+  AND ($2::text IS NULL OR d.status = $2::text)
+  AND ($3::uuid IS NULL OR d.endpoint_id = $3::uuid)
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT $5 OFFSET $4
+`
+
+type ListDeliveriesByProjectParams struct {
+	ProjectID  pgtype.UUID
+	Status     pgtype.Text
+	EndpointID pgtype.UUID
+	Offset     int32
+	Limit      int32
+}
+
+type ListDeliveriesByProjectRow struct {
+	ID                 pgtype.UUID
+	EventID            pgtype.UUID
+	EndpointID         pgtype.UUID
+	Status             string
+	AttemptCount       int32
+	NextAttemptAt      pgtype.Timestamptz
+	LastResponseStatus pgtype.Int4
+	LastError          pgtype.Text
+	ReplayOf           pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+// Scoped through endpoints so deliveries_endpoint_created_idx can serve each
+// endpoint of the project.
+func (q *Queries) ListDeliveriesByProject(ctx context.Context, arg ListDeliveriesByProjectParams) ([]ListDeliveriesByProjectRow, error) {
+	rows, err := q.db.Query(ctx, listDeliveriesByProject,
+		arg.ProjectID,
+		arg.Status,
+		arg.EndpointID,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDeliveriesByProjectRow{}
+	for rows.Next() {
+		var i ListDeliveriesByProjectRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.EndpointID,
+			&i.Status,
+			&i.AttemptCount,
+			&i.NextAttemptAt,
+			&i.LastResponseStatus,
+			&i.LastError,
+			&i.ReplayOf,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeliveryAttempts = `-- name: ListDeliveryAttempts :many
+SELECT id, delivery_id, attempt_number, status_code, response_body, error, duration_ms, attempted_at
+FROM delivery_attempts
+WHERE delivery_id = $1
+ORDER BY attempt_number
+`
+
+func (q *Queries) ListDeliveryAttempts(ctx context.Context, deliveryID pgtype.UUID) ([]DeliveryAttempt, error) {
+	rows, err := q.db.Query(ctx, listDeliveryAttempts, deliveryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeliveryAttempt{}
+	for rows.Next() {
+		var i DeliveryAttempt
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeliveryID,
+			&i.AttemptNumber,
+			&i.StatusCode,
+			&i.ResponseBody,
+			&i.Error,
+			&i.DurationMs,
+			&i.AttemptedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const queueBacklog = `-- name: QueueBacklog :one
+SELECT count(*) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at <= now())::bigint AS due,
+       count(*) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at > now())::bigint AS scheduled,
+       count(*) FILTER (WHERE d.status = 'pending' AND NOT en.enabled)::bigint AS held,
+       count(*) FILTER (WHERE d.status = 'processing')::bigint AS processing,
+       coalesce(extract(epoch FROM now() - min(d.next_attempt_at) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at <= now())), 0)::float8 AS oldest_due_seconds
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE d.status IN ('pending', 'processing')
+`
+
+type QueueBacklogRow struct {
+	Due              int64
+	Scheduled        int64
+	Held             int64
+	Processing       int64
+	OldestDueSeconds float64
+}
+
+// Instance-wide queue depth for worker metrics. Pending deliveries of
+// disabled endpoints are reported as held, not due, because workers skip them.
+func (q *Queries) QueueBacklog(ctx context.Context) (QueueBacklogRow, error) {
+	row := q.db.QueryRow(ctx, queueBacklog)
+	var i QueueBacklogRow
+	err := row.Scan(
+		&i.Due,
+		&i.Scheduled,
+		&i.Held,
+		&i.Processing,
+		&i.OldestDueSeconds,
+	)
+	return i, err
 }

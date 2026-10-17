@@ -13,9 +13,10 @@ WHERE e.id = $1;
 -- name: ListEndpointsByProject :many
 SELECT id, project_id, url, secret_encrypted, enabled, created_at, updated_at
 FROM endpoints
-WHERE project_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
+WHERE project_id = sqlc.arg('project_id')
+  AND (sqlc.narg('enabled')::boolean IS NULL OR enabled = sqlc.narg('enabled')::boolean)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: UpdateEndpoint :one
 UPDATE endpoints

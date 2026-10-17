@@ -70,16 +70,12 @@ func (h eventHandler) list(c fiber.Ctx) error {
 	if err != nil {
 		return writeError(c, application.ErrInvalidInput)
 	}
-	limit, offset := pageParams(c)
-	events, err := h.events.List(c.Context(), principalFrom(c), projectID, limit, offset)
+	filter := application.EventFilter{EventType: c.Query("event_type")}
+	page, err := h.events.List(c.Context(), principalFrom(c), projectID, filter, pageParams(c))
 	if err != nil {
 		return writeError(c, err)
 	}
-	out := make([]eventResponse, 0, len(events))
-	for _, event := range events {
-		out = append(out, mapEvent(event))
-	}
-	return c.JSON(fiber.Map{"events": out})
+	return c.JSON(pageBody("events", page, mapEvent))
 }
 
 func (h eventHandler) get(c fiber.Ctx) error {

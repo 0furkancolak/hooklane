@@ -49,16 +49,11 @@ func (h projectHandler) create(c fiber.Ctx) error {
 }
 
 func (h projectHandler) list(c fiber.Ctx) error {
-	limit, offset := pageParams(c)
-	projects, err := h.projects.List(c.Context(), principalFrom(c), limit, offset)
+	page, err := h.projects.List(c.Context(), principalFrom(c), pageParams(c))
 	if err != nil {
 		return writeError(c, err)
 	}
-	out := make([]projectResponse, 0, len(projects))
-	for _, project := range projects {
-		out = append(out, mapProject(project))
-	}
-	return c.JSON(fiber.Map{"projects": out})
+	return c.JSON(pageBody("projects", page, mapProject))
 }
 
 func (h projectHandler) get(c fiber.Ctx) error {

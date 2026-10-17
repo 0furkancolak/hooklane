@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +13,7 @@ import (
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/config"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database"
+	"github.com/0furkancolak/hooklane/api/internal/infrastructure/metrics"
 	httpserver "github.com/0furkancolak/hooklane/api/internal/transport/http"
 )
 
@@ -37,6 +40,17 @@ func main() {
 		log.Fatalf("ENDPOINT_SECRET_KEY: %v", err)
 	}
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	ready := func(ctx context.Context) error {
+		if err := pool.Ping(ctx); err != nil {
+			logger.Warn("database ping failed", "error", err)
+			return errors.New("database unavailable")
+		}
+		return nil
+	}
+	registry := metrics.NewRegistry()
+
 	store := database.NewStore(pool)
 	server := httpserver.NewServer(cfg, httpserver.Services{
 		Auth:     application.NewAuthenticator(store.Keys()),
@@ -46,12 +60,23 @@ func main() {
 			Destinations:      application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()},
 		}),
 		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
-		Deliveries: application.NewDeliveryService(store.Events(), store.Deliveries()),
-	})
+		Deliveries: application.NewDeliveryService(store.Projects(), store.Events(), store.Deliveries()),
+	},
+		httpserver.WithLogger(logger),
+		httpserver.WithRequestObserver(metrics.NewHTTP(registry)),
+		httpserver.WithReadiness(ready),
+	)
+
+	var ops *metrics.OpsServer
+	if cfg.MetricsAddr != "" {
+		ops = metrics.NewOpsServer(cfg.MetricsAddr, registry, ready, logger)
+		ops.Start()
+		logger.Info("ops listener started", "addr", cfg.MetricsAddr)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("Hooklane API listening on :%s", cfg.Port)
+		logger.Info("api listening", "port", cfg.Port, "env", string(cfg.AppEnv))
 		errCh <- server.Listen()
 	}()
 
@@ -61,11 +86,14 @@ func main() {
 			log.Fatal(err)
 		}
 	case <-ctx.Done():
-		log.Println("Hooklane API shutting down")
+		logger.Info("api shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown: %v", err)
+			logger.Error("shutdown", "error", err)
+		}
+		if ops != nil {
+			_ = ops.Shutdown(shutdownCtx)
 		}
 	}
 }

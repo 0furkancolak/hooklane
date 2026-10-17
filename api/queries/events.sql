@@ -21,6 +21,7 @@ WHERE ev.id = $1;
 -- name: ListEventsByProject :many
 SELECT id, project_id, event_type, payload, idempotency_key, created_at
 FROM events
-WHERE project_id = $1
+WHERE project_id = sqlc.arg('project_id')
+  AND (sqlc.narg('event_type')::text IS NULL OR event_type = sqlc.narg('event_type')::text)
 ORDER BY created_at DESC, id DESC
-LIMIT $2 OFFSET $3;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');

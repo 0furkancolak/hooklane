@@ -2,7 +2,6 @@ package http
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -23,7 +22,7 @@ type errorDetail struct {
 func writeError(c fiber.Ctx, err error) error {
 	status, code, message := classifyError(err)
 	if status >= http.StatusInternalServerError {
-		slog.Error("request failed", "error", err)
+		loggerFrom(c).Error("request failed", "error", err)
 		message = "internal error"
 	}
 	return c.Status(status).JSON(errorBody{Error: errorDetail{Code: code, Message: message}})

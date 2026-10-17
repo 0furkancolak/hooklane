@@ -6,6 +6,7 @@ import (
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/domain"
+	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database/db"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -48,6 +49,89 @@ func (s *Store) CreateReplayDelivery(ctx context.Context, originalID uuid.UUID) 
 	}
 	return mapDelivery(row.ID, row.EventID, row.EndpointID, row.Status, row.AttemptCount, row.NextAttemptAt,
 		row.LastResponseStatus, row.LastError, row.ReplayOf, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func (s *Store) ListDeliveriesByProject(ctx context.Context, projectID uuid.UUID, filter application.DeliveryFilter, limit, offset int32) ([]domain.Delivery, error) {
+	params := db.ListDeliveriesByProjectParams{ProjectID: uuidToPg(projectID), Limit: limit, Offset: offset}
+	if filter.Status != "" {
+		params.Status = pgtype.Text{String: string(filter.Status), Valid: true}
+	}
+	if filter.EndpointID != nil {
+		params.EndpointID = uuidToPg(*filter.EndpointID)
+	}
+	rows, err := s.q(ctx).ListDeliveriesByProject(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Delivery, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, mapDelivery(row.ID, row.EventID, row.EndpointID, row.Status, row.AttemptCount, row.NextAttemptAt,
+			row.LastResponseStatus, row.LastError, row.ReplayOf, row.CreatedAt, row.UpdatedAt))
+	}
+	return out, nil
+}
+
+func (s *Store) ListDeliveryAttempts(ctx context.Context, deliveryID uuid.UUID) ([]domain.DeliveryAttempt, error) {
+	rows, err := s.q(ctx).ListDeliveryAttempts(ctx, uuidToPg(deliveryID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.DeliveryAttempt, 0, len(rows))
+	for _, row := range rows {
+		attempt := domain.DeliveryAttempt{
+			ID:            pgToUUID(row.ID),
+			DeliveryID:    pgToUUID(row.DeliveryID),
+			AttemptNumber: row.AttemptNumber,
+			AttemptedAt:   row.AttemptedAt.Time,
+		}
+		if row.StatusCode.Valid {
+			v := row.StatusCode.Int32
+			attempt.StatusCode = &v
+		}
+		if row.ResponseBody.Valid {
+			v := row.ResponseBody.String
+			attempt.ResponseBody = &v
+		}
+		if row.Error.Valid {
+			v := row.Error.String
+			attempt.Error = &v
+		}
+		if row.DurationMs.Valid {
+			v := row.DurationMs.Int64
+			attempt.DurationMS = &v
+		}
+		out = append(out, attempt)
+	}
+	return out, nil
+}
+
+func (s *Store) DeliveryStatsByProject(ctx context.Context, projectID uuid.UUID) (domain.DeliveryStats, error) {
+	row, err := s.q(ctx).DeliveryStatsByProject(ctx, uuidToPg(projectID))
+	if err != nil {
+		return domain.DeliveryStats{}, err
+	}
+	return domain.DeliveryStats{
+		Pending:     row.Pending,
+		Processing:  row.Processing,
+		Succeeded:   row.Succeeded,
+		DeadLetter:  row.DeadLetter,
+		OldestDueAt: pgTimePtr(row.OldestDueAt),
+	}, nil
+}
+
+// QueueBacklog reports instance-wide queue depth for worker metrics.
+func (s *Store) QueueBacklog(ctx context.Context) (application.QueueBacklog, error) {
+	row, err := s.q(ctx).QueueBacklog(ctx)
+	if err != nil {
+		return application.QueueBacklog{}, err
+	}
+	return application.QueueBacklog{
+		Due:              row.Due,
+		Scheduled:        row.Scheduled,
+		Held:             row.Held,
+		Processing:       row.Processing,
+		OldestDueSeconds: row.OldestDueSeconds,
+	}, nil
 }
 
 func mapDelivery(

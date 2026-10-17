@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ type testEnv struct {
 	foreign domain.Project
 }
 
-func newTestEnv(t *testing.T, env config.AppEnv) testEnv {
+func newTestEnv(t *testing.T, env config.AppEnv, opts ...Option) testEnv {
 	t.Helper()
 	ctx := context.Background()
 	store := memstore.New()
@@ -55,8 +56,8 @@ func newTestEnv(t *testing.T, env config.AppEnv) testEnv {
 		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
 		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: cfg.AllowInsecureHTTP(), Destinations: application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()}}),
 		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
-		Deliveries: application.NewDeliveryService(store.Events(), store.Deliveries()),
-	})
+		Deliveries: application.NewDeliveryService(store.Projects(), store.Events(), store.Deliveries()),
+	}, append([]Option{WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))}, opts...)...)
 	return testEnv{server: server, store: store, key: raw, project: project, foreign: foreign}
 }
 

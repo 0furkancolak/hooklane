@@ -206,7 +206,7 @@ func TestIntegrationExhaustedDeliveryIsDeadLetteredAndReplayable(t *testing.T) {
 	}
 	before = snapshot()
 
-	svc := application.NewDeliveryService(tn.store.Events(), tn.store.Deliveries())
+	svc := application.NewDeliveryService(tn.store.Projects(), tn.store.Events(), tn.store.Deliveries())
 	var wg sync.WaitGroup
 	results := make([]error, 8)
 	replays := make([]domain.Delivery, 8)

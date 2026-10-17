@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/config"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database"
+	"github.com/0furkancolak/hooklane/api/internal/infrastructure/metrics"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/webhook"
 )
 
@@ -37,11 +40,16 @@ func main() {
 	defer pool.Close()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	store := database.NewStore(pool)
+	registry := metrics.NewRegistry()
+	observer := metrics.NewWorker(registry)
+	metrics.RegisterBacklog(registry, store.QueueBacklog)
 	sender := webhook.NewSender(webhook.SenderConfig{
 		RequestTimeout: cfg.Worker.RequestTimeout,
 		Destinations:   application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()},
 	})
-	worker, err := application.NewDeliveryWorker(database.NewStore(pool).Queue(), sender, secrets, application.WorkerConfig{
+	worker, err := application.NewDeliveryWorker(store.Queue(), sender, secrets, application.WorkerConfig{
 		Concurrency:     cfg.Worker.Concurrency,
 		PollInterval:    cfg.Worker.PollInterval,
 		Lease:           cfg.Worker.Lease(),
@@ -51,9 +59,30 @@ func main() {
 			BaseDelay:   cfg.Worker.RetryBaseDelay,
 			MaxDelay:    cfg.Worker.RetryMaxDelay,
 		},
+		Observer: observer,
 	}, logger)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if cfg.MetricsAddr != "" {
+		ops := metrics.NewOpsServer(cfg.MetricsAddr, registry, func(probeCtx context.Context) error {
+			if ctx.Err() != nil {
+				return errors.New("shutting down")
+			}
+			if err := pool.Ping(probeCtx); err != nil {
+				logger.Warn("database ping failed", "error", err)
+				return errors.New("database unavailable")
+			}
+			return nil
+		}, logger)
+		ops.Start()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = ops.Shutdown(shutdownCtx)
+		}()
+		logger.Info("ops listener started", "addr", cfg.MetricsAddr)
 	}
 
 	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String(), "allow_private_networks", cfg.AllowPrivateNetworks())

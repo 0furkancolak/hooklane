@@ -74,9 +74,14 @@ func (s *Store) GetEvent(ctx context.Context, id uuid.UUID) (domain.Event, error
 	return mapped, nil
 }
 
-func (s *Store) ListEventsByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Event, error) {
+func (s *Store) ListEventsByProject(ctx context.Context, projectID uuid.UUID, filter application.EventFilter, limit, offset int32) ([]domain.Event, error) {
+	eventType := pgtype.Text{}
+	if filter.EventType != "" {
+		eventType = pgtype.Text{String: filter.EventType, Valid: true}
+	}
 	rows, err := s.q(ctx).ListEventsByProject(ctx, db.ListEventsByProjectParams{
 		ProjectID: uuidToPg(projectID),
+		EventType: eventType,
 		Limit:     limit,
 		Offset:    offset,
 	})

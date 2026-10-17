@@ -33,7 +33,7 @@ type APIKeyRepository interface {
 type EndpointRepository interface {
 	Create(ctx context.Context, endpoint domain.Endpoint) (domain.Endpoint, error)
 	Get(ctx context.Context, id uuid.UUID) (domain.Endpoint, error)
-	ListByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Endpoint, error)
+	ListByProject(ctx context.Context, projectID uuid.UUID, filter EndpointFilter, limit, offset int32) ([]domain.Endpoint, error)
 	Update(ctx context.Context, id uuid.UUID, update domain.EndpointUpdate) (domain.Endpoint, error)
 }
 
@@ -49,7 +49,7 @@ type IdempotentInsert struct {
 type EventRepository interface {
 	InsertIdempotent(ctx context.Context, event domain.Event) (IdempotentInsert, error)
 	Get(ctx context.Context, id uuid.UUID) (domain.Event, error)
-	ListByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Event, error)
+	ListByProject(ctx context.Context, projectID uuid.UUID, filter EventFilter, limit, offset int32) ([]domain.Event, error)
 }
 
 type DeliveryRepository interface {
@@ -61,6 +61,33 @@ type DeliveryRepository interface {
 	// CreateReplay inserts a pending delivery for the same event and endpoint.
 	// It returns ErrReplayInProgress when an unfinished replay already exists.
 	CreateReplay(ctx context.Context, originalID uuid.UUID) (domain.Delivery, error)
+	ListByProject(ctx context.Context, projectID uuid.UUID, filter DeliveryFilter, limit, offset int32) ([]domain.Delivery, error)
+	ListAttempts(ctx context.Context, deliveryID uuid.UUID) ([]domain.DeliveryAttempt, error)
+	StatsByProject(ctx context.Context, projectID uuid.UUID) (domain.DeliveryStats, error)
+}
+
+// QueueBacklog is the instance-wide queue depth exported as worker metrics.
+type QueueBacklog struct {
+	Due       int64
+	Scheduled int64
+	// Held counts pending deliveries of disabled endpoints.
+	Held             int64
+	Processing       int64
+	OldestDueSeconds float64
+}
+
+// Zero-valued filter fields match everything.
+type EndpointFilter struct {
+	Enabled *bool
+}
+
+type EventFilter struct {
+	EventType string
+}
+
+type DeliveryFilter struct {
+	Status     domain.DeliveryStatus
+	EndpointID *uuid.UUID
 }
 
 // ErrLeaseLost means the delivery's lease expired and another worker may have

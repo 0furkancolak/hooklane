@@ -34,9 +34,10 @@ func (s *ProjectService) Get(ctx context.Context, principal Principal, id uuid.U
 	return ownedProject(ctx, s.projects, principal, id)
 }
 
-func (s *ProjectService) List(ctx context.Context, principal Principal, limit, offset int32) ([]domain.Project, error) {
-	limit, offset = clampPage(limit, offset)
-	return s.projects.ListByOrganization(ctx, principal.OrganizationID, limit, offset)
+func (s *ProjectService) List(ctx context.Context, principal Principal, page PageRequest) (Page[domain.Project], error) {
+	return paginate(page, func(limit, offset int32) ([]domain.Project, error) {
+		return s.projects.ListByOrganization(ctx, principal.OrganizationID, limit, offset)
+	})
 }
 
 // ownedProject loads a project and verifies the principal's organization owns it.
@@ -52,16 +53,6 @@ func ownedProject(ctx context.Context, projects ProjectRepository, principal Pri
 		return domain.Project{}, ErrForbidden
 	}
 	return project, nil
-}
-
-func clampPage(limit, offset int32) (int32, int32) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return limit, offset
 }
 
 func (s *ProjectService) CreateAPIKey(ctx context.Context, principal Principal, projectID uuid.UUID, name string) (domain.APIKey, string, error) {

@@ -25,6 +25,9 @@ type Querier interface {
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error)
+	// oldest_due_at ignores disabled endpoints: workers do not claim their
+	// deliveries, so they are held rather than late.
+	DeliveryStatsByProject(ctx context.Context, projectID pgtype.UUID) (DeliveryStatsByProjectRow, error)
 	GetAPIKey(ctx context.Context, id pgtype.UUID) (GetAPIKeyRow, error)
 	GetAPIKeyByHash(ctx context.Context, keyHash []byte) (GetAPIKeyByHashRow, error)
 	GetDelivery(ctx context.Context, id pgtype.UUID) (GetDeliveryRow, error)
@@ -37,10 +40,17 @@ type Querier interface {
 	InsertEvent(ctx context.Context, arg InsertEventParams) (Event, error)
 	ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUID) ([]ListAPIKeysByProjectRow, error)
 	ListDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) ([]ListDeliveriesByEventRow, error)
+	// Scoped through endpoints so deliveries_endpoint_created_idx can serve each
+	// endpoint of the project.
+	ListDeliveriesByProject(ctx context.Context, arg ListDeliveriesByProjectParams) ([]ListDeliveriesByProjectRow, error)
+	ListDeliveryAttempts(ctx context.Context, deliveryID pgtype.UUID) ([]DeliveryAttempt, error)
 	ListEndpointsByProject(ctx context.Context, arg ListEndpointsByProjectParams) ([]Endpoint, error)
 	ListEventsByProject(ctx context.Context, arg ListEventsByProjectParams) ([]Event, error)
 	ListProjectsByOrganization(ctx context.Context, arg ListProjectsByOrganizationParams) ([]Project, error)
 	Ping(ctx context.Context) (int32, error)
+	// Instance-wide queue depth for worker metrics. Pending deliveries of
+	// disabled endpoints are reported as held, not due, because workers skip them.
+	QueueBacklog(ctx context.Context) (QueueBacklogRow, error)
 	RevokeAPIKey(ctx context.Context, id pgtype.UUID) (ApiKey, error)
 	TouchAPIKeyLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) (Endpoint, error)

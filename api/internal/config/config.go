@@ -25,6 +25,9 @@ type Config struct {
 	// optional here so the admin CLI can run without it; the API and worker
 	// refuse to start when it is missing.
 	EndpointSecretKey []byte
+	// MetricsAddr, when set, serves /metrics, /healthz and /readyz on a
+	// separate listener (for example 127.0.0.1:9101). Empty disables it.
+	MetricsAddr string
 
 	Worker WorkerConfig
 }
@@ -60,6 +63,7 @@ func Load() (Config, error) {
 		AppEnv:      AppEnv(getenv("APP_ENV", string(AppEnvDevelopment))),
 		Port:        getenv("PORT", "8080"),
 		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		MetricsAddr: strings.TrimSpace(os.Getenv("METRICS_ADDR")),
 	}
 
 	switch cfg.AppEnv {

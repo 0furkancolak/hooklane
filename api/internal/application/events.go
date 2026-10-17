@@ -111,12 +111,16 @@ func (s *EventService) Get(ctx context.Context, principal Principal, id uuid.UUI
 	return event, nil
 }
 
-func (s *EventService) List(ctx context.Context, principal Principal, projectID uuid.UUID, limit, offset int32) ([]domain.Event, error) {
-	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
-		return nil, err
+func (s *EventService) List(ctx context.Context, principal Principal, projectID uuid.UUID, filter EventFilter, page PageRequest) (Page[domain.Event], error) {
+	if filter.EventType != "" && !eventTypePattern.MatchString(filter.EventType) {
+		return Page[domain.Event]{}, ErrInvalidInput
 	}
-	limit, offset = clampPage(limit, offset)
-	return s.events.ListByProject(ctx, projectID, limit, offset)
+	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
+		return Page[domain.Event]{}, err
+	}
+	return paginate(page, func(limit, offset int32) ([]domain.Event, error) {
+		return s.events.ListByProject(ctx, projectID, filter, limit, offset)
+	})
 }
 
 func validateIngest(in IngestInput) (domain.Event, error) {

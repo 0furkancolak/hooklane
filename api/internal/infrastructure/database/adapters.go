@@ -72,8 +72,8 @@ func (s Endpoints) Get(ctx context.Context, id uuid.UUID) (domain.Endpoint, erro
 	return s.Store.GetEndpoint(ctx, id)
 }
 
-func (s Endpoints) ListByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Endpoint, error) {
-	return s.Store.ListEndpointsByProject(ctx, projectID, limit, offset)
+func (s Endpoints) ListByProject(ctx context.Context, projectID uuid.UUID, filter application.EndpointFilter, limit, offset int32) ([]domain.Endpoint, error) {
+	return s.Store.ListEndpointsByProject(ctx, projectID, filter, limit, offset)
 }
 
 func (s Endpoints) Update(ctx context.Context, id uuid.UUID, update domain.EndpointUpdate) (domain.Endpoint, error) {
@@ -90,8 +90,8 @@ func (s Events) Get(ctx context.Context, id uuid.UUID) (domain.Event, error) {
 	return s.Store.GetEvent(ctx, id)
 }
 
-func (s Events) ListByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Event, error) {
-	return s.Store.ListEventsByProject(ctx, projectID, limit, offset)
+func (s Events) ListByProject(ctx context.Context, projectID uuid.UUID, filter application.EventFilter, limit, offset int32) ([]domain.Event, error) {
+	return s.Store.ListEventsByProject(ctx, projectID, filter, limit, offset)
 }
 
 type Deliveries struct{ Store *Store }
@@ -114,6 +114,18 @@ func (s Deliveries) ListByEvent(ctx context.Context, eventID uuid.UUID) ([]domai
 
 func (s Deliveries) CreateReplay(ctx context.Context, originalID uuid.UUID) (domain.Delivery, error) {
 	return s.Store.CreateReplayDelivery(ctx, originalID)
+}
+
+func (s Deliveries) ListByProject(ctx context.Context, projectID uuid.UUID, filter application.DeliveryFilter, limit, offset int32) ([]domain.Delivery, error) {
+	return s.Store.ListDeliveriesByProject(ctx, projectID, filter, limit, offset)
+}
+
+func (s Deliveries) ListAttempts(ctx context.Context, deliveryID uuid.UUID) ([]domain.DeliveryAttempt, error) {
+	return s.Store.ListDeliveryAttempts(ctx, deliveryID)
+}
+
+func (s Deliveries) StatsByProject(ctx context.Context, projectID uuid.UUID) (domain.DeliveryStats, error) {
+	return s.Store.DeliveryStatsByProject(ctx, projectID)
 }
 
 func (s *Store) Orgs() Organizations    { return Organizations{Store: s} }

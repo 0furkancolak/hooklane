@@ -21,7 +21,7 @@ func TestReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := application.NewDeliveryService(f.store.Events(), f.store.Deliveries())
+	svc := application.NewDeliveryService(f.store.Projects(), f.store.Events(), f.store.Deliveries())
 	list, err := svc.ListForEvent(ctx, f.principal, ingested.Event.ID)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("list: %v %d", err, len(list))
