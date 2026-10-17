@@ -14,25 +14,31 @@ import (
 const maxEndpointURLLength = 2048
 
 type EndpointService struct {
-	projects          ProjectRepository
-	endpoints         EndpointRepository
-	secrets           *SecretBox
-	allowInsecureHTTP bool
+	projects  ProjectRepository
+	endpoints EndpointRepository
+	secrets   *SecretBox
+	rules     EndpointRules
 }
 
-// NewEndpointService builds the endpoint service. allowInsecureHTTP permits
-// http:// destinations and must only be enabled in development.
+// EndpointRules restrict which URLs endpoints may use. Both relaxations must
+// only be enabled in development.
+type EndpointRules struct {
+	// AllowInsecureHTTP permits http:// destinations.
+	AllowInsecureHTTP bool
+	Destinations      DestinationPolicy
+}
+
 func NewEndpointService(
 	projects ProjectRepository,
 	endpoints EndpointRepository,
 	secrets *SecretBox,
-	allowInsecureHTTP bool,
+	rules EndpointRules,
 ) *EndpointService {
 	return &EndpointService{
-		projects:          projects,
-		endpoints:         endpoints,
-		secrets:           secrets,
-		allowInsecureHTTP: allowInsecureHTTP,
+		projects:  projects,
+		endpoints: endpoints,
+		secrets:   secrets,
+		rules:     rules,
 	}
 }
 
@@ -133,8 +139,9 @@ func (s *EndpointService) Secret(ctx context.Context, principal Principal, id uu
 	return s.secrets.Open(endpoint.SecretEncrypted)
 }
 
-// validateURL performs structural checks only. Destination address filtering
-// (SSRF, DNS rebinding, redirects) happens at delivery time in Phase 6.
+// validateURL checks the URL structure and, for literal addresses and
+// localhost names, the destination policy. Resolved addresses are checked
+// again on every connection the worker makes.
 func (s *EndpointService) validateURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > maxEndpointURLLength {
@@ -147,11 +154,14 @@ func (s *EndpointService) validateURL(raw string) (string, error) {
 	switch parsed.Scheme {
 	case "https":
 	case "http":
-		if !s.allowInsecureHTTP {
+		if !s.rules.AllowInsecureHTTP {
 			return "", ErrInvalidInput
 		}
 	default:
 		return "", ErrInvalidInput
+	}
+	if err := s.rules.Destinations.CheckHost(parsed.Hostname()); err != nil {
+		return "", err
 	}
 	return parsed.String(), nil
 }

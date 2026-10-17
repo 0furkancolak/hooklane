@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -364,6 +365,27 @@ func TestWorkerTreats2xxWithBodyReadErrorAsSuccess(t *testing.T) {
 	<-done
 	got := queue.completed[claims[0].DeliveryID]
 	if got.Status != domain.DeliverySucceeded || got.Attempt.Error == nil {
+		t.Fatalf("outcome = %+v", got)
+	}
+}
+
+func TestWorkerDeadLettersBlockedDestinationImmediately(t *testing.T) {
+	box, _ := application.NewSecretBox(make([]byte, 32))
+	claims := newClaims(t, box, 1)
+	sender := &fakeSender{respond: func(application.WebhookRequest) application.WebhookResult {
+		return application.WebhookResult{Err: fmt.Errorf("dial tcp 10.0.0.1:443: %w: 10.0.0.1", application.ErrDestinationNotAllowed)}
+	}}
+	queue := &fakeQueue{pending: claims}
+	w := newWorker(t, queue, sender, box, application.WorkerConfig{Concurrency: 1})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	waitFor(t, func() bool { return queue.done() == 1 })
+	cancel()
+	<-done
+	got := queue.completed[claims[0].DeliveryID]
+	if got.Status != domain.DeliveryDeadLetter || got.RetryDelay != nil || got.Attempt.Error == nil {
 		t.Fatalf("outcome = %+v", got)
 	}
 }

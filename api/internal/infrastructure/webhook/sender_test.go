@@ -14,6 +14,9 @@ import (
 
 const testSecret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
 
+// loopbackOK lets tests reach httptest servers, which listen on 127.0.0.1.
+var loopbackOK = application.DestinationPolicy{AllowPrivateNetworks: true}
+
 func TestSendProducesVerifiableRequest(t *testing.T) {
 	var verifyErr error
 	var gotBody string
@@ -28,7 +31,7 @@ func TestSendProducesVerifiableRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := NewSender(SenderConfig{}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "evt_1", Body: []byte(`{"x":1}`),
 	})
 	if result.Err != nil || result.StatusCode != http.StatusNoContent {
@@ -54,7 +57,7 @@ func TestSendTimesOut(t *testing.T) {
 	defer close(release)
 
 	started := time.Now()
-	result := NewSender(SenderConfig{RequestTimeout: 200 * time.Millisecond}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK, RequestTimeout: 200 * time.Millisecond}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if result.Err == nil || result.StatusCode != 0 {
@@ -82,7 +85,7 @@ func TestSendTimesOutOnSlowBody(t *testing.T) {
 	defer server.Close()
 
 	started := time.Now()
-	result := NewSender(SenderConfig{RequestTimeout: 300 * time.Millisecond}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK, RequestTimeout: 300 * time.Millisecond}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if result.Err == nil {
@@ -102,7 +105,7 @@ func TestSendDoesNotFollowRedirects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := NewSender(SenderConfig{}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if followed || result.StatusCode != http.StatusTemporaryRedirect {
@@ -118,7 +121,7 @@ func TestSendBoundsAndSanitizesResponseBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := NewSender(SenderConfig{MaxResponseBytes: 64}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK, MaxResponseBytes: 64}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if result.StatusCode != http.StatusInternalServerError {
@@ -140,7 +143,7 @@ func TestSendReportsConnectionFailure(t *testing.T) {
 	addr := listener.Addr().String()
 	listener.Close()
 
-	result := NewSender(SenderConfig{RequestTimeout: time.Second}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK, RequestTimeout: time.Second}).Send(context.Background(), application.WebhookRequest{
 		URL: "http://" + addr, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if result.Err == nil || result.StatusCode != 0 {
@@ -173,7 +176,7 @@ func TestSendReportsRetryAfter(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
-	result := NewSender(SenderConfig{}).Send(context.Background(), application.WebhookRequest{
+	result := NewSender(SenderConfig{Destinations: loopbackOK}).Send(context.Background(), application.WebhookRequest{
 		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
 	})
 	if result.StatusCode != http.StatusTooManyRequests || result.RetryAfter != 90*time.Second {

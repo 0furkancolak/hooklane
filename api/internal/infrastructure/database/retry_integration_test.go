@@ -76,7 +76,12 @@ func flakyServer(failures int32) (*httptest.Server, *atomic.Int32) {
 
 func runWorker(t *testing.T, tn tenant, box *application.SecretBox, policy application.RetryPolicy, until func() bool) {
 	t.Helper()
-	worker, err := application.NewDeliveryWorker(tn.store.Queue(), webhook.NewSender(webhook.SenderConfig{RequestTimeout: 2 * time.Second}), box,
+	runWorkerWith(t, tn, box, policy, application.DestinationPolicy{AllowPrivateNetworks: true}, until)
+}
+
+func runWorkerWith(t *testing.T, tn tenant, box *application.SecretBox, policy application.RetryPolicy, destinations application.DestinationPolicy, until func() bool) {
+	t.Helper()
+	worker, err := application.NewDeliveryWorker(tn.store.Queue(), webhook.NewSender(webhook.SenderConfig{RequestTimeout: 2 * time.Second, Destinations: destinations}), box,
 		application.WorkerConfig{Concurrency: 2, PollInterval: 10 * time.Millisecond, Lease: time.Minute, ShutdownTimeout: 5 * time.Second, Retry: policy},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -132,7 +137,7 @@ func (tn tenant) attempts(t *testing.T, id uuid.UUID) []attemptRow {
 
 func (tn tenant) endpointFor(t *testing.T, box *application.SecretBox, url string) {
 	t.Helper()
-	svc := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, true)
+	svc := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: true, Destinations: application.DestinationPolicy{AllowPrivateNetworks: true}})
 	if _, _, err := svc.Create(context.Background(), tn.principal, tn.project.ID, application.CreateEndpointInput{URL: url}); err != nil {
 		t.Fatal(err)
 	}

@@ -211,7 +211,7 @@
 - [x] Phase 3 complete and verified
 - [x] Phase 4 complete and verified
 - [x] Phase 5 complete and verified
-- [ ] Phase 6 complete and verified
+- [x] Phase 6 complete and verified
 - [ ] Phase 7 complete and verified
 - [ ] Phase 8 complete and verified
 - [ ] Phase 9 complete and verified
@@ -361,6 +361,55 @@ Acceptance evidence:
   got `409 replay_in_progress`
 - Migration verified on the test database: `failed` rows convert, the new check
   rejects `failed`, down and up both apply
+
+## Phase 6 Verification Notes (2026-10-17)
+
+No schema change was needed.
+
+Decisions:
+- One `DestinationPolicy` in the application layer is enforced in two places:
+  on save (literal addresses and `localhost` names, `400
+  destination_not_allowed`) and on every outbound socket through
+  `net.Dialer.Control`, which sees the resolved address right before connect.
+  The connect-time check is authoritative: it covers DNS rebinding, resolver
+  quirks (such as decimal IPv4 hostnames) and endpoints saved before Phase 6
+- Development (`APP_ENV=development`) allows loopback and private ranges only;
+  link-local, metadata, CGNAT and reserved ranges are blocked in every
+  environment. Embedded IPv4 in mapped, NAT64 and 6to4 addresses is judged as
+  IPv4
+- Redirects stay disabled rather than validated: a redirect is a permanent
+  failure, so there is no second destination to check
+- A blocked destination is non-retryable and dead-letters on the first attempt
+- Attempt errors drop the URL query string; API responses get `no-store` and
+  `nosniff`; the API has read/write/idle timeouts; malformed API keys are
+  rejected before a database lookup
+
+Acceptance evidence:
+- Prohibited ranges: table test of 26 addresses under production and
+  development policies; endpoint create and update reject blocked literals and
+  localhost names
+- Connect-time enforcement: sender tests show a production sender refuses a
+  loopback literal and `localhost` (resolved) without the server being hit, and
+  a development sender still refuses `169.254.169.254`; an integration test
+  runs a production worker against a `localhost` endpoint in Postgres and gets
+  one attempt, `dead_letter`, zero receiver hits
+- Redirects: a 307 to a second server is not followed and the second server is
+  never contacted
+- Tenant isolation: one HTTP test calls all 14 ID-taking routes with another
+  organization's resources and gets `403` with no writes; earlier memstore and
+  Postgres cross-tenant tests still pass
+- Secrets in logs: a test captures logs during endpoint creation, secret
+  reads, ingestion and a bad key and finds no key, secret or payload value; a
+  transport error test confirms the query string is dropped
+- Dev run with `APP_ENV=production` on the development database: the API
+  returned `400 destination_not_allowed` for loopback, metadata, mapped-private
+  and localhost URLs; the worker dead-lettered all four deliveries to
+  `127.0.0.1` endpoints after one attempt with `destination address is not
+  allowed`, the receiver logged zero hits, and neither log contained the API key
+
+Known gaps carried forward:
+- No port restrictions (documented)
+- `/readyz` still does not check the database (Phase 7)
 
 ## Migration Naming Convention
 

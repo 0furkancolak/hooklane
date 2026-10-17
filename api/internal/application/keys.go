@@ -8,10 +8,13 @@ import (
 	"fmt"
 )
 
-const apiKeyPrefix = "hlk_"
+const (
+	apiKeyPrefix          = "hlk_"
+	apiKeySecretHexLength = 64
+)
 
 func GenerateAPIKey() (raw string, prefix string, hash []byte, err error) {
-	secret := make([]byte, 32)
+	secret := make([]byte, apiKeySecretHexLength/2)
 	if _, err := rand.Read(secret); err != nil {
 		return "", "", nil, fmt.Errorf("generate api key: %w", err)
 	}

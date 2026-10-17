@@ -299,7 +299,7 @@ func TestIntegrationEndpointOwnershipAndUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, false)
+	svc := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, application.EndpointRules{})
 	ctx := context.Background()
 
 	endpoint, secret, err := svc.Create(ctx, tn.principal, tn.project.ID, application.CreateEndpointInput{URL: "https://example.com/a"})

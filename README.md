@@ -71,7 +71,7 @@ All `/v1` routes require `Authorization: Bearer <key>`. Access is scoped to the 
 | `GET` | `/v1/events/{id}/deliveries` | List an event's deliveries, including replays |
 | `POST` | `/v1/deliveries/{id}/replay` | Queue a new delivery of a succeeded or dead-lettered delivery |
 
-Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=development`. Destination address filtering (SSRF) arrives in Phase 6.
+Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=development`. URLs that point at blocked addresses are rejected with `400 destination_not_allowed` (see [Security](#security)).
 
 ### Accepting events
 
@@ -104,6 +104,7 @@ The worker POSTs `{"id", "type", "timestamp", "data"}` signed with Standard Webh
 | --- | --- |
 | `2xx` | `succeeded` |
 | Network error, timeout, `408`, `425`, `429`, `5xx` | Retried |
+| Blocked destination address | `dead_letter` immediately |
 | Any other status, including `3xx` (redirects are not followed) | `dead_letter` immediately |
 
 After the n-th failed attempt the next attempt waits a random duration in `[d/2, d]`, where `d = min(WORKER_RETRY_MAX_DELAY, WORKER_RETRY_BASE_DELAY × 2^(n-1))`. A `Retry-After` header can lengthen the wait up to the maximum. After `WORKER_MAX_ATTEMPTS` failed attempts the delivery becomes `dead_letter`. With the defaults (10 attempts, 30s base, 4h cap) the last attempt happens roughly 2 to 4.3 hours after the first.
@@ -119,3 +120,31 @@ Replaying creates a new `pending` delivery with `replay_of` set and a fresh retr
 | `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
 | `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
 | `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |
+
+## Security
+
+Endpoint URLs are chosen by tenants, so the worker treats every destination as untrusted.
+
+**Destination addresses.** Outside development, deliveries never connect to:
+
+- loopback, private (RFC 1918) and unique local IPv6 addresses
+- link-local addresses, which include the AWS, GCP and Azure metadata service (`169.254.169.254`, `fd00:ec2::254`)
+- carrier-grade NAT (`100.64.0.0/10`, which includes Alibaba Cloud metadata), "this network", multicast, broadcast, documentation, benchmarking and other reserved ranges
+- IPv6 forms that embed one of the above IPv4 addresses (IPv4-mapped, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`)
+
+`APP_ENV=development` additionally allows loopback and private networks, so local receivers work. Link-local, metadata and reserved ranges stay blocked there too.
+
+**Where it is enforced.** The check runs on the address of every outbound socket, after DNS resolution and immediately before connecting (`net.Dialer.Control`). A hostname that resolves to a blocked address, or that rebinds after the URL was saved, is therefore still refused, and so are endpoints saved before the check existed. Saving an endpoint also rejects literal blocked addresses and `localhost` names early, with a clear error. A blocked delivery is dead-lettered at once, with the reason recorded on the attempt.
+
+**Redirects and proxies.** Redirects are never followed; a `3xx` is a permanent failure. `HTTP_PROXY` and similar variables are ignored for webhook traffic.
+
+**Limits.** Request bodies are capped at 1 MiB and event payloads at 256 KiB. Only the first 4 KiB of a response body is read and stored. Outbound requests have connect, TLS, header and total timeouts. The API applies read, write and idle timeouts.
+
+**Credentials and logs.** API keys are stored as SHA-256 hashes, and malformed keys are rejected before any database lookup. Endpoint secrets are encrypted at rest with AES-256-GCM and returned only by the create and `/secret` routes. Request logs do not include headers, payloads or secrets. Attempt errors store the destination without its query string, because receivers sometimes put tokens there. Every API response carries `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+
+**Tenant isolation.** The tenant is always taken from the API key, never from the request. Every route that takes a resource ID returns `403` for resources owned by another organization. A test exercises each of these routes.
+
+**Assumptions and limits.**
+- Run the worker with egress that does not depend on Hooklane's checks alone where possible, for example a network policy or firewall that also blocks internal ranges.
+- Ports are not restricted; receivers often use non-standard ports, and internal services are already unreachable through the address checks.
+- A public address that forwards to internal systems (such as an open reverse proxy you operate) is outside what address filtering can detect.

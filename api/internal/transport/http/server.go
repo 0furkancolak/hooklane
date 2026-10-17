@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"time"
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/config"
@@ -29,7 +30,12 @@ func NewServer(cfg config.Config, svc Services) *Server {
 	app := fiber.New(fiber.Config{
 		BodyLimit:    maxRequestBodyBytes,
 		ErrorHandler: frameworkErrorHandler,
+		// Bound slow clients so they cannot hold connections open.
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	})
+	app.Use(securityHeaders)
 	app.Get("/healthz", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
@@ -63,6 +69,14 @@ func NewServer(cfg config.Config, svc Services) *Server {
 	v1.Post("/deliveries/:id/replay", deliveries.replay)
 
 	return &Server{app: app, port: cfg.Port}
+}
+
+// securityHeaders marks every response as non-sniffable JSON and keeps
+// tenant data (keys, secrets, payloads) out of shared and browser caches.
+func securityHeaders(c fiber.Ctx) error {
+	c.Set("X-Content-Type-Options", "nosniff")
+	c.Set("Cache-Control", "no-store")
+	return c.Next()
 }
 
 func (s *Server) Listen() error {

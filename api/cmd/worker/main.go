@@ -37,7 +37,10 @@ func main() {
 	defer pool.Close()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	sender := webhook.NewSender(webhook.SenderConfig{RequestTimeout: cfg.Worker.RequestTimeout})
+	sender := webhook.NewSender(webhook.SenderConfig{
+		RequestTimeout: cfg.Worker.RequestTimeout,
+		Destinations:   application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()},
+	})
 	worker, err := application.NewDeliveryWorker(database.NewStore(pool).Queue(), sender, secrets, application.WorkerConfig{
 		Concurrency:     cfg.Worker.Concurrency,
 		PollInterval:    cfg.Worker.PollInterval,
@@ -53,7 +56,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String())
+	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String(), "allow_private_networks", cfg.AllowPrivateNetworks())
 	if err := worker.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
