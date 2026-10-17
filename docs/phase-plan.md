@@ -212,7 +212,7 @@
 - [x] Phase 4 complete and verified
 - [x] Phase 5 complete and verified
 - [x] Phase 6 complete and verified
-- [ ] Phase 7 complete and verified
+- [x] Phase 7 complete and verified
 - [ ] Phase 8 complete and verified
 - [ ] Phase 9 complete and verified
 
@@ -410,6 +410,55 @@ Acceptance evidence:
 Known gaps carried forward:
 - No port restrictions (documented)
 - `/readyz` still does not check the database (Phase 7)
+
+## Phase 7 Verification Notes (2026-10-17)
+
+No schema change was needed; the new project-wide delivery queries go through
+`endpoints` so the existing `deliveries_endpoint_created_idx` serves them.
+
+Implementation:
+- Query API: project deliveries with `status` and `endpoint_id` filters, single
+  delivery, attempt history, project delivery stats; `enabled` filter on
+  endpoints and `event_type` filter on events
+- Pagination: `limit` clamped to 1..100 (default 50), `offset` ≥ 0; lists fetch
+  one extra row to return `next_offset` without a count query
+- Readiness: `/readyz` pings the database (2s timeout); `/healthz` never checks
+  dependencies. Optional `METRICS_ADDR` listener with `/metrics`, `/healthz`
+  and `/readyz` for both processes; the worker reports not ready once shutdown
+  starts
+- Logs: JSON via slog in both processes; an `X-Request-ID` is accepted or
+  generated, echoed, and attached to the access log line and to error logs
+- Authentication moved from the `/v1` group to each route so rejected requests
+  are labelled with their real route pattern; unknown `/v1` paths now return
+  `404` instead of `401`
+- Metrics: Prometheus client with route-pattern labels, worker attempt
+  counters by result and response class, in-flight gauge, lease-lost and
+  database error counters, and queue gauges read from the database at scrape
+  time. Pending deliveries of disabled endpoints are reported as `held`, not
+  due, so a disabled endpoint does not look like a stalled worker
+
+Acceptance evidence:
+- Tenant-scoped: the cross-tenant route test now covers 18 routes, including
+  the four new delivery routes; service tests check `403` for each new query;
+  the Postgres test shows project lists exclude another tenant's deliveries
+- Bounded pagination: tests for first, middle, exact-end and last pages,
+  clamping of `limit=10000` and negative offsets, and HTTP `next_offset`
+- Health and readiness: HTTP tests flip readiness to `503` while `/healthz`
+  stays `200`; ops server test covers all three paths; documented in the
+  README Operations section
+- Metrics: unit tests assert the exported series and labels; the backlog
+  collector reports `up=0` and no stale gauges when the query fails; an
+  integration test checks due and held counts against Postgres
+- Logs: tests assert the access log contains the request ID, route pattern,
+  status and key ID, and contains no query string, API key, endpoint secret or
+  payload value
+- Dev run: an event sent with `X-Request-ID: phase7-check` was traced through
+  the access log; the worker's `/metrics` showed attempts split into
+  succeeded, retry_scheduled and dead_letter by response class; the dead-letter
+  filter, attempt history and stats matched the receiver's behaviour; metrics
+  are not served on the public port (`404`); neither log contained the API key.
+  The run also exposed that pending deliveries of a disabled endpoint inflated
+  `oldest_due_seconds`; they are now counted as held
 
 ## Migration Naming Convention
 

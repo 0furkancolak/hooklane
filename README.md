@@ -62,14 +62,20 @@ All `/v1` routes require `Authorization: Bearer <key>`. Access is scoped to the 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/v1/projects/{id}/endpoints` | Register an endpoint. The response includes the signing `secret`. |
-| `GET` | `/v1/projects/{id}/endpoints` | List endpoints |
+| `GET` | `/v1/projects/{id}/endpoints` | List endpoints (`?enabled=true\|false`) |
 | `GET` / `PATCH` | `/v1/endpoints/{id}` | Read, change `url`, or toggle `enabled` |
 | `GET` | `/v1/endpoints/{id}/secret` | Retrieve the signing secret |
 | `POST` | `/v1/projects/{id}/events` | Accept an event |
-| `GET` | `/v1/projects/{id}/events` | List events (newest first, `limit` ≤ 100) |
+| `GET` | `/v1/projects/{id}/events` | List events (`?event_type=`) |
 | `GET` | `/v1/events/{id}` | Read an event |
 | `GET` | `/v1/events/{id}/deliveries` | List an event's deliveries, including replays |
+| `GET` | `/v1/projects/{id}/deliveries` | List deliveries (`?status=`, `?endpoint_id=`) |
+| `GET` | `/v1/projects/{id}/delivery-stats` | Delivery counts by status and the oldest overdue delivery |
+| `GET` | `/v1/deliveries/{id}` | Read a delivery |
+| `GET` | `/v1/deliveries/{id}/attempts` | Attempt history: status code, stored response body (first 4 KiB), error, duration |
 | `POST` | `/v1/deliveries/{id}/replay` | Queue a new delivery of a succeeded or dead-lettered delivery |
+
+List routes are newest first and take `limit` (1–100, default 50) and `offset`. Responses look like `{"events": [...], "limit": 50, "offset": 0, "next_offset": 50}`; `next_offset` is `null` on the last page. Every response carries an `X-Request-ID` header; a valid incoming `X-Request-ID` (up to 64 characters from `A-Z a-z 0-9 . _ -`) is kept, otherwise one is generated.
 
 Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=development`. URLs that point at blocked addresses are rejected with `400 destination_not_allowed` (see [Security](#security)).
 
@@ -120,6 +126,53 @@ Replaying creates a new `pending` delivery with `replay_of` set and a fresh retr
 | `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
 | `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
 | `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |
+
+## Operations
+
+### Health and readiness
+
+| Path | Meaning |
+| --- | --- |
+| `GET /healthz` | The process is running. Never checks dependencies, so it is safe for liveness probes. |
+| `GET /readyz` | The process can do useful work: the database answers a ping within 2s. Returns `503 {"status":"unavailable"}` otherwise. A worker also reports unavailable once shutdown has begun. |
+
+The API serves both on its main port. With `METRICS_ADDR` set (for example `127.0.0.1:9101`), the API and the worker also serve `/healthz`, `/readyz` and `/metrics` on that separate listener. The worker has no other HTTP port, so set `METRICS_ADDR` to probe it. Metrics are never served on the public API port.
+
+### Metrics
+
+Prometheus text format at `/metrics` on the `METRICS_ADDR` listener.
+
+| Metric | Type | Meaning |
+| --- | --- | --- |
+| `hooklane_http_requests_total{method,route,status}` | counter | API requests, labelled by route pattern (`/v1/events/:id`), never by ID |
+| `hooklane_http_request_duration_seconds{method,route}` | histogram | API latency |
+| `hooklane_delivery_attempts_total{result,response}` | counter | Recorded attempts. `result` is `succeeded`, `retry_scheduled` or `dead_letter`; `response` is `2xx`…`5xx` or `transport_error` |
+| `hooklane_delivery_attempt_duration_seconds{result}` | histogram | Outbound request time |
+| `hooklane_worker_deliveries_in_flight` | gauge | Deliveries being sent by this worker |
+| `hooklane_worker_claimed_deliveries_total` | counter | Deliveries claimed by this worker |
+| `hooklane_worker_claim_errors_total`, `hooklane_worker_record_errors_total` | counter | Database failures while claiming or recording |
+| `hooklane_worker_lease_lost_total` | counter | Results discarded because the lease expired (raise `WORKER_REQUEST_TIMEOUT` margin or check database latency) |
+| `hooklane_queue_due_deliveries` | gauge | Pending deliveries due now (instance-wide, read from the database at scrape time) |
+| `hooklane_queue_scheduled_deliveries` | gauge | Pending deliveries waiting for a retry |
+| `hooklane_queue_held_deliveries` | gauge | Pending deliveries of disabled endpoints |
+| `hooklane_queue_processing_deliveries` | gauge | Claimed deliveries |
+| `hooklane_queue_oldest_due_seconds` | gauge | How long the oldest due delivery has waited; alert when it keeps growing |
+| `hooklane_queue_backlog_query_up` | gauge | `0` when the backlog query failed |
+
+Go runtime and process metrics are included. Queue gauges are global, so scrape them from one worker or aggregate with `max`.
+
+Suggested alerts: `hooklane_queue_oldest_due_seconds > 300` for 10 minutes (workers are behind or down); a rising rate of `result="dead_letter"`; any increase in `hooklane_worker_lease_lost_total`.
+
+### Logs
+
+Both processes write JSON logs to stdout. The API writes one `request` line per request with `request_id`, `method`, `route`, `path`, `status`, `duration_ms` and, once authenticated, `api_key_id` and `organization_id`. It does not log headers, query strings or bodies. The worker logs each attempt with `delivery_id`, `event_id`, `endpoint_id`, `attempt`, `status`, `status_code` and `duration_ms`; endpoint URLs, secrets and payloads are never logged.
+
+### Diagnosing a delivery
+
+1. `GET /v1/projects/{id}/delivery-stats` shows whether deliveries are piling up (`pending`, `oldest_due_at`) or failing (`dead_letter`).
+2. `GET /v1/projects/{id}/deliveries?status=dead_letter` lists the failures.
+3. `GET /v1/deliveries/{id}/attempts` shows each attempt's status code, response excerpt and error.
+4. Fix the receiver, then `POST /v1/deliveries/{id}/replay`.
 
 ## Security
 

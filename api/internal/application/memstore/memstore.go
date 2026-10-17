@@ -23,6 +23,7 @@ type state struct {
 	endpoints  []domain.Endpoint
 	events     []domain.Event
 	deliveries []domain.Delivery
+	attempts   []domain.DeliveryAttempt
 }
 
 func (s state) clone() state {
@@ -32,6 +33,7 @@ func (s state) clone() state {
 		endpoints:  slices.Clone(s.endpoints),
 		events:     slices.Clone(s.events),
 		deliveries: slices.Clone(s.deliveries),
+		attempts:   slices.Clone(s.attempts),
 	}
 }
 
@@ -192,12 +194,12 @@ func (r Endpoints) Get(_ context.Context, id uuid.UUID) (domain.Endpoint, error)
 	return domain.Endpoint{}, pgx.ErrNoRows
 }
 
-func (r Endpoints) ListByProject(_ context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Endpoint, error) {
+func (r Endpoints) ListByProject(_ context.Context, projectID uuid.UUID, filter application.EndpointFilter, limit, offset int32) ([]domain.Endpoint, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Endpoint
 	for _, e := range r.s.state.endpoints {
-		if e.ProjectID == projectID {
+		if e.ProjectID == projectID && (filter.Enabled == nil || e.Enabled == *filter.Enabled) {
 			out = append(out, e)
 		}
 	}
@@ -256,12 +258,12 @@ func (r Events) Get(_ context.Context, id uuid.UUID) (domain.Event, error) {
 	return domain.Event{}, pgx.ErrNoRows
 }
 
-func (r Events) ListByProject(_ context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Event, error) {
+func (r Events) ListByProject(_ context.Context, projectID uuid.UUID, filter application.EventFilter, limit, offset int32) ([]domain.Event, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Event
 	for _, e := range r.s.state.events {
-		if e.ProjectID == projectID {
+		if e.ProjectID == projectID && (filter.EventType == "" || e.EventType == filter.EventType) {
 			out = append(out, e)
 		}
 	}
@@ -353,6 +355,76 @@ func (r Deliveries) CreateReplay(_ context.Context, originalID uuid.UUID) (domai
 	}
 	r.s.state.deliveries = append(r.s.state.deliveries, replay)
 	return replay, nil
+}
+
+func (r Deliveries) ListByProject(_ context.Context, projectID uuid.UUID, filter application.DeliveryFilter, limit, offset int32) ([]domain.Delivery, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Delivery
+	for i := len(r.s.state.deliveries) - 1; i >= 0; i-- {
+		d := r.s.state.deliveries[i]
+		if r.s.projectOfEndpoint(d.EndpointID) != projectID {
+			continue
+		}
+		if (filter.Status == "" || d.Status == filter.Status) && (filter.EndpointID == nil || d.EndpointID == *filter.EndpointID) {
+			out = append(out, d)
+		}
+	}
+	return page(out, limit, offset), nil
+}
+
+func (r Deliveries) ListAttempts(_ context.Context, deliveryID uuid.UUID) ([]domain.DeliveryAttempt, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := []domain.DeliveryAttempt{}
+	for _, a := range r.s.state.attempts {
+		if a.DeliveryID == deliveryID {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (r Deliveries) StatsByProject(_ context.Context, projectID uuid.UUID) (domain.DeliveryStats, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var stats domain.DeliveryStats
+	for _, d := range r.s.state.deliveries {
+		if r.s.projectOfEndpoint(d.EndpointID) != projectID {
+			continue
+		}
+		switch d.Status {
+		case domain.DeliveryPending:
+			stats.Pending++
+		case domain.DeliveryProcessing:
+			stats.Processing++
+		case domain.DeliverySucceeded:
+			stats.Succeeded++
+		case domain.DeliveryDeadLetter:
+			stats.DeadLetter++
+		}
+	}
+	return stats, nil
+}
+
+// AddAttempt records an attempt, as the worker would through the queue.
+func (s *Store) AddAttempt(attempt domain.DeliveryAttempt) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempt.ID = uuid.New()
+	if attempt.AttemptedAt.IsZero() {
+		attempt.AttemptedAt = time.Now().UTC()
+	}
+	s.state.attempts = append(s.state.attempts, attempt)
+}
+
+func (s *Store) projectOfEndpoint(endpointID uuid.UUID) uuid.UUID {
+	for _, e := range s.state.endpoints {
+		if e.ID == endpointID {
+			return e.ProjectID
+		}
+	}
+	return uuid.Nil
 }
 
 // SetDeliveryStatus lets tests move a delivery to a terminal state.

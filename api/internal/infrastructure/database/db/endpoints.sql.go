@@ -83,18 +83,25 @@ const listEndpointsByProject = `-- name: ListEndpointsByProject :many
 SELECT id, project_id, url, secret_encrypted, enabled, created_at, updated_at
 FROM endpoints
 WHERE project_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+  AND ($2::boolean IS NULL OR enabled = $2::boolean)
+ORDER BY created_at DESC, id DESC
+LIMIT $4 OFFSET $3
 `
 
 type ListEndpointsByProjectParams struct {
 	ProjectID pgtype.UUID
-	Limit     int32
+	Enabled   pgtype.Bool
 	Offset    int32
+	Limit     int32
 }
 
 func (q *Queries) ListEndpointsByProject(ctx context.Context, arg ListEndpointsByProjectParams) ([]Endpoint, error) {
-	rows, err := q.db.Query(ctx, listEndpointsByProject, arg.ProjectID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listEndpointsByProject,
+		arg.ProjectID,
+		arg.Enabled,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

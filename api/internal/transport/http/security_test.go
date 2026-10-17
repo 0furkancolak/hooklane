@@ -65,6 +65,10 @@ func TestCrossTenantAccessIsRefusedOnEveryRoute(t *testing.T) {
 		{"GET", "/v1/events/" + event.Event.ID.String() + "/deliveries", ""},
 		{"POST", "/v1/deliveries/" + deliveries[0].ID.String() + "/replay", ""},
 		{"POST", "/v1/api-keys/" + foreignKey.ID.String() + "/revoke", ""},
+		{"GET", project + "/deliveries", ""},
+		{"GET", project + "/delivery-stats", ""},
+		{"GET", "/v1/deliveries/" + deliveries[0].ID.String(), ""},
+		{"GET", "/v1/deliveries/" + deliveries[0].ID.String() + "/attempts", ""},
 	}
 	for _, r := range routes {
 		resp, body := env.do(t, r.method, r.path, r.body)
@@ -79,11 +83,7 @@ func TestCrossTenantAccessIsRefusedOnEveryRoute(t *testing.T) {
 
 func TestRequestsDoNotLogCredentials(t *testing.T) {
 	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-
-	env := newTestEnv(t, config.AppEnvProduction)
+	env := newTestEnv(t, config.AppEnvProduction, WithLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))))
 	base := "/v1/projects/" + env.project.ID.String()
 	resp, created := env.do(t, "POST", base+"/endpoints", `{"url":"https://example.com/hook"}`)
 	if resp.StatusCode != stdhttp.StatusCreated {

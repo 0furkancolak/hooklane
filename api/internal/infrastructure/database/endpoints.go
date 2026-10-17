@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"github.com/0furkancolak/hooklane/api/internal/application"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database/db"
@@ -41,9 +42,14 @@ func (s *Store) GetEndpoint(ctx context.Context, id uuid.UUID) (domain.Endpoint,
 	}, nil
 }
 
-func (s *Store) ListEndpointsByProject(ctx context.Context, projectID uuid.UUID, limit, offset int32) ([]domain.Endpoint, error) {
+func (s *Store) ListEndpointsByProject(ctx context.Context, projectID uuid.UUID, filter application.EndpointFilter, limit, offset int32) ([]domain.Endpoint, error) {
+	enabled := pgtype.Bool{}
+	if filter.Enabled != nil {
+		enabled = pgtype.Bool{Bool: *filter.Enabled, Valid: true}
+	}
 	rows, err := s.q(ctx).ListEndpointsByProject(ctx, db.ListEndpointsByProjectParams{
 		ProjectID: uuidToPg(projectID),
+		Enabled:   enabled,
 		Limit:     limit,
 		Offset:    offset,
 	})

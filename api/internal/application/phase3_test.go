@@ -148,7 +148,7 @@ func TestEndpointLifecycleAndTenantIsolation(t *testing.T) {
 	if _, _, err := f.endpoints.Create(ctx, intruder, f.project.ID, application.CreateEndpointInput{URL: "https://evil.example"}); !errors.Is(err, application.ErrForbidden) {
 		t.Fatalf("cross-tenant create: %v", err)
 	}
-	if _, err := f.endpoints.List(ctx, intruder, f.project.ID, 10, 0); !errors.Is(err, application.ErrForbidden) {
+	if _, err := f.endpoints.List(ctx, intruder, f.project.ID, application.EndpointFilter{}, application.PageRequest{Limit: 10}); !errors.Is(err, application.ErrForbidden) {
 		t.Fatalf("cross-tenant list: %v", err)
 	}
 }
@@ -286,7 +286,7 @@ func TestEventReadsAreTenantScoped(t *testing.T) {
 	if _, err := f.events.Get(ctx, intruder, result.Event.ID); !errors.Is(err, application.ErrForbidden) {
 		t.Fatalf("cross-tenant get: %v", err)
 	}
-	if _, err := f.events.List(ctx, intruder, f.project.ID, 10, 0); !errors.Is(err, application.ErrForbidden) {
+	if _, err := f.events.List(ctx, intruder, f.project.ID, application.EventFilter{}, application.PageRequest{Limit: 10}); !errors.Is(err, application.ErrForbidden) {
 		t.Fatalf("cross-tenant list: %v", err)
 	}
 	if _, err := f.events.Get(ctx, f.principal, uuid.New()); !errors.Is(err, application.ErrNotFound) {

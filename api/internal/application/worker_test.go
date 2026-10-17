@@ -389,3 +389,63 @@ func TestWorkerDeadLettersBlockedDestinationImmediately(t *testing.T) {
 		t.Fatalf("outcome = %+v", got)
 	}
 }
+
+type recordingObserver struct {
+	mu       sync.Mutex
+	claimed  int
+	inFlight int
+	peak     int
+	results  map[domain.DeliveryStatus]int
+	codes    []int
+}
+
+func (o *recordingObserver) Claimed(n int) { o.mu.Lock(); o.claimed += n; o.mu.Unlock() }
+func (o *recordingObserver) ClaimFailed()  {}
+func (o *recordingObserver) InFlight(d int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.inFlight += d
+	o.peak = max(o.peak, o.inFlight)
+}
+func (o *recordingObserver) AttemptRecorded(status domain.DeliveryStatus, code int, _ time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.results == nil {
+		o.results = map[domain.DeliveryStatus]int{}
+	}
+	o.results[status]++
+	o.codes = append(o.codes, code)
+}
+func (o *recordingObserver) LeaseLost()    {}
+func (o *recordingObserver) RecordFailed() {}
+
+func TestWorkerReportsToObserver(t *testing.T) {
+	box, _ := application.NewSecretBox(make([]byte, 32))
+	claims := newClaims(t, box, 3)
+	codes := map[string]int{claims[0].Event.ID.String(): 200, claims[1].Event.ID.String(): 503, claims[2].Event.ID.String(): 404}
+	sender := &fakeSender{respond: func(r application.WebhookRequest) application.WebhookResult {
+		return application.WebhookResult{StatusCode: codes[r.MessageID]}
+	}}
+	queue := &fakeQueue{pending: claims}
+	observer := &recordingObserver{}
+	w := newWorker(t, queue, sender, box, application.WorkerConfig{Concurrency: 3, Observer: observer})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	waitFor(t, func() bool { return queue.done() == 3 })
+	cancel()
+	<-done
+
+	observer.mu.Lock()
+	defer observer.mu.Unlock()
+	if observer.claimed != 3 || observer.inFlight != 0 || observer.peak < 1 {
+		t.Fatalf("claimed=%d inFlight=%d peak=%d", observer.claimed, observer.inFlight, observer.peak)
+	}
+	want := map[domain.DeliveryStatus]int{domain.DeliverySucceeded: 1, domain.DeliveryPending: 1, domain.DeliveryDeadLetter: 1}
+	for status, n := range want {
+		if observer.results[status] != n {
+			t.Fatalf("results = %v", observer.results)
+		}
+	}
+}

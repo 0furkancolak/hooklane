@@ -126,18 +126,25 @@ const listEventsByProject = `-- name: ListEventsByProject :many
 SELECT id, project_id, event_type, payload, idempotency_key, created_at
 FROM events
 WHERE project_id = $1
+  AND ($2::text IS NULL OR event_type = $2::text)
 ORDER BY created_at DESC, id DESC
-LIMIT $2 OFFSET $3
+LIMIT $4 OFFSET $3
 `
 
 type ListEventsByProjectParams struct {
 	ProjectID pgtype.UUID
-	Limit     int32
+	EventType pgtype.Text
 	Offset    int32
+	Limit     int32
 }
 
 func (q *Queries) ListEventsByProject(ctx context.Context, arg ListEventsByProjectParams) ([]Event, error) {
-	rows, err := q.db.Query(ctx, listEventsByProject, arg.ProjectID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listEventsByProject,
+		arg.ProjectID,
+		arg.EventType,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

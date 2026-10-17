@@ -44,6 +44,25 @@ type DeliveryAttempt struct {
 	AttemptedAt   time.Time
 }
 
+// DeliveryStats counts a project's deliveries by status. OldestDueAt is the
+// earliest next_attempt_at among pending deliveries that are already due; a
+// growing gap to now means workers are not keeping up.
+type DeliveryStats struct {
+	Pending     int64
+	Processing  int64
+	Succeeded   int64
+	DeadLetter  int64
+	OldestDueAt *time.Time
+}
+
+func (s DeliveryStatus) Valid() bool {
+	switch s {
+	case DeliveryPending, DeliveryProcessing, DeliverySucceeded, DeliveryDeadLetter:
+		return true
+	}
+	return false
+}
+
 func (s DeliveryStatus) IsTerminal() bool {
 	switch s {
 	case DeliverySucceeded, DeliveryDeadLetter:

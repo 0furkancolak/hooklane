@@ -96,12 +96,13 @@ func (s *EndpointService) Get(ctx context.Context, principal Principal, id uuid.
 	return endpoint, nil
 }
 
-func (s *EndpointService) List(ctx context.Context, principal Principal, projectID uuid.UUID, limit, offset int32) ([]domain.Endpoint, error) {
+func (s *EndpointService) List(ctx context.Context, principal Principal, projectID uuid.UUID, filter EndpointFilter, page PageRequest) (Page[domain.Endpoint], error) {
 	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
-		return nil, err
+		return Page[domain.Endpoint]{}, err
 	}
-	limit, offset = clampPage(limit, offset)
-	return s.endpoints.ListByProject(ctx, projectID, limit, offset)
+	return paginate(page, func(limit, offset int32) ([]domain.Endpoint, error) {
+		return s.endpoints.ListByProject(ctx, projectID, filter, limit, offset)
+	})
 }
 
 func (s *EndpointService) Update(ctx context.Context, principal Principal, id uuid.UUID, update domain.EndpointUpdate) (domain.Endpoint, error) {

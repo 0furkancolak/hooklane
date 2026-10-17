@@ -29,6 +29,8 @@ type WorkerConfig struct {
 	// shutdown starts; afterwards they are cancelled and their leases expire.
 	ShutdownTimeout time.Duration
 	Retry           RetryPolicy
+	// Observer receives events for metrics; nil disables them.
+	Observer WorkerObserver
 }
 
 type DeliveryWorker struct {
@@ -48,6 +50,9 @@ func NewDeliveryWorker(queue DeliveryQueue, sender WebhookSender, secrets *Secre
 	}
 	if log == nil {
 		log = slog.Default()
+	}
+	if cfg.Observer == nil {
+		cfg.Observer = nopObserver{}
 	}
 	return &DeliveryWorker{queue: queue, sender: sender, secrets: secrets, cfg: cfg, log: log}, nil
 }
@@ -87,6 +92,7 @@ poll:
 			if ctx.Err() != nil {
 				break poll
 			}
+			w.cfg.Observer.ClaimFailed()
 			w.log.Error("claim deliveries", "error", err)
 			if !sleep(ctx, w.cfg.PollInterval) {
 				break poll
@@ -94,11 +100,14 @@ poll:
 			continue
 		}
 		release(slots, free-len(claims))
+		w.cfg.Observer.Claimed(len(claims))
 		for _, claim := range claims {
 			inflight.Add(1)
+			w.cfg.Observer.InFlight(1)
 			go func() {
 				defer inflight.Done()
 				defer release(slots, 1)
+				defer w.cfg.Observer.InFlight(-1)
 				w.deliver(sendCtx, claim)
 			}()
 		}
@@ -124,7 +133,7 @@ poll:
 }
 
 func (w *DeliveryWorker) deliver(ctx context.Context, claim ClaimedDelivery) {
-	log := w.log.With("delivery_id", claim.DeliveryID, "endpoint_id", claim.Endpoint.ID, "attempt", claim.Attempt)
+	log := w.log.With("delivery_id", claim.DeliveryID, "event_id", claim.Event.ID, "endpoint_id", claim.Endpoint.ID, "attempt", claim.Attempt)
 	outcome := w.attempt(ctx, claim)
 
 	// Record the result even if sends were cancelled during shutdown.
@@ -133,10 +142,14 @@ func (w *DeliveryWorker) deliver(ctx context.Context, claim ClaimedDelivery) {
 	err := w.queue.Complete(completeCtx, claim, outcome)
 	switch {
 	case errors.Is(err, ErrLeaseLost):
+		w.cfg.Observer.LeaseLost()
 		log.Warn("delivery lease lost; result discarded")
 	case err != nil:
+		w.cfg.Observer.RecordFailed()
 		log.Error("record delivery attempt", "error", err)
 	default:
+		w.cfg.Observer.AttemptRecorded(outcome.Status, int(derefInt32(outcome.Attempt.StatusCode)),
+			time.Duration(derefInt64(outcome.Attempt.DurationMS))*time.Millisecond)
 		attrs := []any{"status", outcome.Status, "status_code", derefInt32(outcome.Attempt.StatusCode), "duration_ms", derefInt64(outcome.Attempt.DurationMS)}
 		if outcome.RetryDelay != nil {
 			attrs = append(attrs, "retry_in", outcome.RetryDelay.Round(time.Second).String())

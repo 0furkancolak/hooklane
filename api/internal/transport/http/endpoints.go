@@ -57,16 +57,15 @@ func (h endpointHandler) list(c fiber.Ctx) error {
 	if err != nil {
 		return writeError(c, application.ErrInvalidInput)
 	}
-	limit, offset := pageParams(c)
-	endpoints, err := h.endpoints.List(c.Context(), principalFrom(c), projectID, limit, offset)
+	enabled, err := boolQuery(c, "enabled")
 	if err != nil {
 		return writeError(c, err)
 	}
-	out := make([]endpointResponse, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		out = append(out, mapEndpoint(endpoint))
+	page, err := h.endpoints.List(c.Context(), principalFrom(c), projectID, application.EndpointFilter{Enabled: enabled}, pageParams(c))
+	if err != nil {
+		return writeError(c, err)
 	}
-	return c.JSON(fiber.Map{"endpoints": out})
+	return c.JSON(pageBody("endpoints", page, mapEndpoint))
 }
 
 func (h endpointHandler) get(c fiber.Ctx) error {

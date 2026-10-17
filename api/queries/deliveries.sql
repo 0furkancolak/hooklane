@@ -88,3 +88,47 @@ WHERE id = sqlc.arg('id')
 -- name: InsertDeliveryAttempt :exec
 INSERT INTO delivery_attempts (delivery_id, attempt_number, status_code, response_body, error, duration_ms)
 VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: ListDeliveriesByProject :many
+-- Scoped through endpoints so deliveries_endpoint_created_idx can serve each
+-- endpoint of the project.
+SELECT d.id, d.event_id, d.endpoint_id, d.status, d.attempt_count,
+       d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
+       d.created_at, d.updated_at
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE en.project_id = sqlc.arg('project_id')
+  AND (sqlc.narg('status')::text IS NULL OR d.status = sqlc.narg('status')::text)
+  AND (sqlc.narg('endpoint_id')::uuid IS NULL OR d.endpoint_id = sqlc.narg('endpoint_id')::uuid)
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
+-- name: ListDeliveryAttempts :many
+SELECT id, delivery_id, attempt_number, status_code, response_body, error, duration_ms, attempted_at
+FROM delivery_attempts
+WHERE delivery_id = $1
+ORDER BY attempt_number;
+
+-- name: DeliveryStatsByProject :one
+-- oldest_due_at ignores disabled endpoints: workers do not claim their
+-- deliveries, so they are held rather than late.
+SELECT count(*) FILTER (WHERE d.status = 'pending')::bigint AS pending,
+       count(*) FILTER (WHERE d.status = 'processing')::bigint AS processing,
+       count(*) FILTER (WHERE d.status = 'succeeded')::bigint AS succeeded,
+       count(*) FILTER (WHERE d.status = 'dead_letter')::bigint AS dead_letter,
+       min(d.next_attempt_at) FILTER (WHERE d.status = 'pending' AND d.next_attempt_at <= now() AND en.enabled)::timestamptz AS oldest_due_at
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE en.project_id = $1;
+
+-- name: QueueBacklog :one
+-- Instance-wide queue depth for worker metrics. Pending deliveries of
+-- disabled endpoints are reported as held, not due, because workers skip them.
+SELECT count(*) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at <= now())::bigint AS due,
+       count(*) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at > now())::bigint AS scheduled,
+       count(*) FILTER (WHERE d.status = 'pending' AND NOT en.enabled)::bigint AS held,
+       count(*) FILTER (WHERE d.status = 'processing')::bigint AS processing,
+       coalesce(extract(epoch FROM now() - min(d.next_attempt_at) FILTER (WHERE d.status = 'pending' AND en.enabled AND d.next_attempt_at <= now())), 0)::float8 AS oldest_due_seconds
+FROM deliveries d
+JOIN endpoints en ON en.id = d.endpoint_id
+WHERE d.status IN ('pending', 'processing');
