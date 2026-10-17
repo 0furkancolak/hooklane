@@ -297,11 +297,87 @@ func (r Deliveries) CountByEvent(_ context.Context, eventID uuid.UUID) (int64, e
 	defer r.s.mu.Unlock()
 	var n int64
 	for _, d := range r.s.state.deliveries {
-		if d.EventID == eventID {
+		if d.EventID == eventID && d.ReplayOf == nil {
 			n++
 		}
 	}
 	return n, nil
+}
+
+func (r Deliveries) Get(_ context.Context, id uuid.UUID) (domain.Delivery, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, d := range r.s.state.deliveries {
+		if d.ID == id {
+			d.OrganizationID = r.s.orgOfEvent(d.EventID)
+			return d, nil
+		}
+	}
+	return domain.Delivery{}, pgx.ErrNoRows
+}
+
+func (r Deliveries) ListByEvent(_ context.Context, eventID uuid.UUID) ([]domain.Delivery, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := []domain.Delivery{}
+	for _, d := range r.s.state.deliveries {
+		if d.EventID == eventID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (r Deliveries) CreateReplay(_ context.Context, originalID uuid.UUID) (domain.Delivery, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var original *domain.Delivery
+	for i, d := range r.s.state.deliveries {
+		if d.ID == originalID {
+			original = &r.s.state.deliveries[i]
+		}
+		if d.ReplayOf != nil && *d.ReplayOf == originalID && (d.Status == domain.DeliveryPending || d.Status == domain.DeliveryProcessing) {
+			return domain.Delivery{}, application.ErrReplayInProgress
+		}
+	}
+	if original == nil {
+		return domain.Delivery{}, pgx.ErrNoRows
+	}
+	replay := domain.Delivery{
+		ID:         uuid.New(),
+		EventID:    original.EventID,
+		EndpointID: original.EndpointID,
+		Status:     domain.DeliveryPending,
+		ReplayOf:   &originalID,
+		CreatedAt:  time.Now().UTC(),
+	}
+	r.s.state.deliveries = append(r.s.state.deliveries, replay)
+	return replay, nil
+}
+
+// SetDeliveryStatus lets tests move a delivery to a terminal state.
+func (s *Store) SetDeliveryStatus(id uuid.UUID, status domain.DeliveryStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.deliveries {
+		if s.state.deliveries[i].ID == id {
+			s.state.deliveries[i].Status = status
+		}
+	}
+}
+
+func (s *Store) orgOfEvent(eventID uuid.UUID) uuid.UUID {
+	for _, e := range s.state.events {
+		if e.ID != eventID {
+			continue
+		}
+		for _, p := range s.state.projects {
+			if p.ID == e.ProjectID {
+				return p.OrganizationID
+			}
+		}
+	}
+	return uuid.Nil
 }
 
 func page[T any](items []T, limit, offset int32) []T {

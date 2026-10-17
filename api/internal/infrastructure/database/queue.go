@@ -58,8 +58,8 @@ func (q Queue) Complete(ctx context.Context, claim application.ClaimedDelivery, 
 			ID:                 uuidToPg(claim.DeliveryID),
 			LeaseToken:         uuidToPg(claim.LeaseToken),
 		}
-		if outcome.NextAttemptAt != nil {
-			params.NextAttemptAt = pgtype.Timestamptz{Time: *outcome.NextAttemptAt, Valid: true}
+		if outcome.RetryDelay != nil {
+			params.RetryDelaySeconds = pgtype.Float8{Float64: outcome.RetryDelay.Seconds(), Valid: true}
 		}
 		updated, err := q.Store.q(ctx).CompleteDelivery(ctx, params)
 		if err != nil {

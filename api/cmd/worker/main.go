@@ -43,6 +43,11 @@ func main() {
 		PollInterval:    cfg.Worker.PollInterval,
 		Lease:           cfg.Worker.Lease(),
 		ShutdownTimeout: cfg.Worker.ShutdownTimeout,
+		Retry: application.RetryPolicy{
+			MaxAttempts: int32(cfg.Worker.MaxAttempts),
+			BaseDelay:   cfg.Worker.RetryBaseDelay,
+			MaxDelay:    cfg.Worker.RetryMaxDelay,
+		},
 	}, logger)
 	if err != nil {
 		log.Fatal(err)

@@ -121,6 +121,9 @@ func newWorker(t *testing.T, q application.DeliveryQueue, s application.WebhookS
 	if cfg.Lease == 0 {
 		cfg.Lease = time.Minute
 	}
+	if cfg.Retry.MaxAttempts == 0 {
+		cfg.Retry = application.RetryPolicy{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: time.Minute}
+	}
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = 5 * time.Second
 	}
@@ -185,10 +188,23 @@ func TestWorkerClassifiesOutcomesAndSignsWithEventID(t *testing.T) {
 	if ok.Status != domain.DeliverySucceeded || *ok.Attempt.StatusCode != 204 || ok.Attempt.Error != nil {
 		t.Fatalf("2xx outcome = %+v", ok)
 	}
-	for i, wantErr := range []string{"endpoint responded with status 500", "dial tcp: connection refused", "endpoint responded with status 302"} {
+	for i, want := range []struct {
+		err    string
+		status domain.DeliveryStatus
+	}{
+		{"endpoint responded with status 500", domain.DeliveryPending},
+		{"dial tcp: connection refused", domain.DeliveryPending},
+		{"endpoint responded with status 302", domain.DeliveryDeadLetter},
+	} {
 		got := queue.completed[claims[i+1].DeliveryID]
-		if got.Status != domain.DeliveryFailed || got.Attempt.Error == nil || *got.Attempt.Error != wantErr {
+		if got.Status != want.status || got.Attempt.Error == nil || *got.Attempt.Error != want.err {
 			t.Fatalf("claim %d outcome = %+v", i+1, got)
+		}
+		if retry := got.RetryDelay != nil; retry != (want.status == domain.DeliveryPending) {
+			t.Fatalf("claim %d retry delay = %v", i+1, got.RetryDelay)
+		}
+		if got.RetryDelay != nil && (*got.RetryDelay < 500*time.Millisecond || *got.RetryDelay > time.Second) {
+			t.Fatalf("first retry delay %v outside [0.5s, 1s]", *got.RetryDelay)
 		}
 	}
 	if code := queue.completed[claims[2].DeliveryID].Attempt.StatusCode; code != nil {
@@ -227,7 +243,7 @@ func TestWorkerUndecryptableSecretFailsWithoutSending(t *testing.T) {
 	if len(sender.requests) != 0 {
 		t.Fatal("must not send without a valid secret")
 	}
-	if got := queue.completed[claims[0].DeliveryID]; got.Status != domain.DeliveryFailed {
+	if got := queue.completed[claims[0].DeliveryID]; got.Status != domain.DeliveryDeadLetter || got.RetryDelay != nil {
 		t.Fatalf("outcome = %+v", got)
 	}
 }
@@ -301,5 +317,53 @@ func TestWorkerSurvivesLeaseLoss(t *testing.T) {
 func TestNewDeliveryWorkerRejectsInvalidConfig(t *testing.T) {
 	if _, err := application.NewDeliveryWorker(&fakeQueue{}, &fakeSender{}, nil, application.WorkerConfig{}, nil); err == nil {
 		t.Fatal("expected config validation error")
+	}
+}
+
+func TestWorkerDeadLettersWhenAttemptsAreExhausted(t *testing.T) {
+	box, _ := application.NewSecretBox(make([]byte, 32))
+	claims := newClaims(t, box, 2)
+	claims[0].Attempt = 2
+	claims[1].Attempt = 3 // MaxAttempts in newWorker's default policy
+	sender := &fakeSender{respond: func(application.WebhookRequest) application.WebhookResult {
+		return application.WebhookResult{StatusCode: 503, RetryAfter: 10 * time.Minute}
+	}}
+	queue := &fakeQueue{pending: claims}
+	w := newWorker(t, queue, sender, box, application.WorkerConfig{Concurrency: 2})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	waitFor(t, func() bool { return queue.done() == 2 })
+	cancel()
+	<-done
+
+	retried := queue.completed[claims[0].DeliveryID]
+	if retried.Status != domain.DeliveryPending || retried.RetryDelay == nil || *retried.RetryDelay != time.Minute {
+		t.Fatalf("Retry-After must raise the delay up to MaxDelay: %+v", retried)
+	}
+	if exhausted := queue.completed[claims[1].DeliveryID]; exhausted.Status != domain.DeliveryDeadLetter || exhausted.RetryDelay != nil {
+		t.Fatalf("exhausted delivery = %+v", exhausted)
+	}
+}
+
+func TestWorkerTreats2xxWithBodyReadErrorAsSuccess(t *testing.T) {
+	box, _ := application.NewSecretBox(make([]byte, 32))
+	claims := newClaims(t, box, 1)
+	sender := &fakeSender{respond: func(application.WebhookRequest) application.WebhookResult {
+		return application.WebhookResult{StatusCode: 200, Err: errors.New("context deadline exceeded while reading body")}
+	}}
+	queue := &fakeQueue{pending: claims}
+	w := newWorker(t, queue, sender, box, application.WorkerConfig{Concurrency: 1})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	waitFor(t, func() bool { return queue.done() == 1 })
+	cancel()
+	<-done
+	got := queue.completed[claims[0].DeliveryID]
+	if got.Status != domain.DeliverySucceeded || got.Attempt.Error == nil {
+		t.Fatalf("outcome = %+v", got)
 	}
 }

@@ -68,6 +68,8 @@ All `/v1` routes require `Authorization: Bearer <key>`. Access is scoped to the 
 | `POST` | `/v1/projects/{id}/events` | Accept an event |
 | `GET` | `/v1/projects/{id}/events` | List events (newest first, `limit` ≤ 100) |
 | `GET` | `/v1/events/{id}` | Read an event |
+| `GET` | `/v1/events/{id}/deliveries` | List an event's deliveries, including replays |
+| `POST` | `/v1/deliveries/{id}/replay` | Queue a new delivery of a succeeded or dead-lettered delivery |
 
 Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=development`. Destination address filtering (SSRF) arrives in Phase 6.
 
@@ -93,3 +95,27 @@ curl -X POST localhost:8080/v1/projects/$PROJECT_ID/events \
 - Same key, different `event_type` or payload: `409` with code `idempotency_conflict`.
 - Concurrent requests with the same key create exactly one event.
 - Keys stay reserved for as long as the event is retained.
+
+### Delivery, retries and replay
+
+The worker POSTs `{"id", "type", "timestamp", "data"}` signed with Standard Webhooks headers (`webhook-id` is the event ID, so receivers can deduplicate). Delivery is at-least-once.
+
+| Outcome | Result |
+| --- | --- |
+| `2xx` | `succeeded` |
+| Network error, timeout, `408`, `425`, `429`, `5xx` | Retried |
+| Any other status, including `3xx` (redirects are not followed) | `dead_letter` immediately |
+
+After the n-th failed attempt the next attempt waits a random duration in `[d/2, d]`, where `d = min(WORKER_RETRY_MAX_DELAY, WORKER_RETRY_BASE_DELAY × 2^(n-1))`. A `Retry-After` header can lengthen the wait up to the maximum. After `WORKER_MAX_ATTEMPTS` failed attempts the delivery becomes `dead_letter`. With the defaults (10 attempts, 30s base, 4h cap) the last attempt happens roughly 2 to 4.3 hours after the first.
+
+Replaying creates a new `pending` delivery with `replay_of` set and a fresh retry budget. The original delivery and its attempts are never modified. Only one unfinished replay per delivery is allowed (`409 replay_in_progress`). Deliveries for disabled endpoints wait until the endpoint is re-enabled.
+
+| Worker variable | Default | Meaning |
+| --- | --- | --- |
+| `WORKER_CONCURRENCY` | `10` | Deliveries in flight |
+| `WORKER_POLL_INTERVAL` | `1s` | Idle wait between claims |
+| `WORKER_REQUEST_TIMEOUT` | `15s` | Whole request; the lease is this plus 30s |
+| `WORKER_SHUTDOWN_TIMEOUT` | `20s` | Drain time before in-flight requests are cancelled |
+| `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
+| `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
+| `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |

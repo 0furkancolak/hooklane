@@ -90,12 +90,32 @@ func (s *Sender) Send(ctx context.Context, req application.WebhookRequest) appli
 	result := application.WebhookResult{
 		StatusCode:   resp.StatusCode,
 		ResponseBody: sanitizeBody(raw),
+		RetryAfter:   parseRetryAfter(resp.Header.Get("Retry-After"), s.now()),
 		Duration:     time.Since(started),
 	}
 	if readErr != nil {
 		result.Err = readErr
 	}
 	return result
+}
+
+// parseRetryAfter accepts delay-seconds or an HTTP date and returns zero for
+// anything else. The retry policy caps the result.
+func parseRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(min(secs, int64(7*24*time.Hour/time.Second))) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now)
+	}
+	return 0
 }
 
 // sanitizeBody makes an arbitrary response storable in a PostgreSQL TEXT

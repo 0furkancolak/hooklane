@@ -55,6 +55,12 @@ type EventRepository interface {
 type DeliveryRepository interface {
 	CreateForEvent(ctx context.Context, eventID, projectID uuid.UUID) (int64, error)
 	CountByEvent(ctx context.Context, eventID uuid.UUID) (int64, error)
+	// Get returns the delivery with its owning organization.
+	Get(ctx context.Context, id uuid.UUID) (domain.Delivery, error)
+	ListByEvent(ctx context.Context, eventID uuid.UUID) ([]domain.Delivery, error)
+	// CreateReplay inserts a pending delivery for the same event and endpoint.
+	// It returns ErrReplayInProgress when an unfinished replay already exists.
+	CreateReplay(ctx context.Context, originalID uuid.UUID) (domain.Delivery, error)
 }
 
 // ErrLeaseLost means the delivery's lease expired and another worker may have
@@ -71,12 +77,12 @@ type ClaimedDelivery struct {
 	Endpoint    domain.Endpoint
 }
 
-// DeliveryOutcome is the result of one attempt. NextAttemptAt is only used
-// when Status puts the delivery back in the queue.
+// DeliveryOutcome is the result of one attempt. RetryDelay is set when Status
+// is pending; the store applies it relative to the database clock.
 type DeliveryOutcome struct {
-	Status        domain.DeliveryStatus
-	NextAttemptAt *time.Time
-	Attempt       domain.DeliveryAttempt
+	Status     domain.DeliveryStatus
+	RetryDelay *time.Duration
+	Attempt    domain.DeliveryAttempt
 }
 
 type DeliveryQueue interface {
@@ -102,8 +108,10 @@ type WebhookRequest struct {
 type WebhookResult struct {
 	StatusCode   int
 	ResponseBody string
-	Duration     time.Duration
-	Err          error
+	// RetryAfter is the receiver's Retry-After hint, zero when absent.
+	RetryAfter time.Duration
+	Duration   time.Duration
+	Err        error
 }
 
 type WebhookSender interface {

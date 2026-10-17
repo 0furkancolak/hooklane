@@ -210,7 +210,7 @@
 - [x] Phase 2 complete and verified
 - [x] Phase 3 complete and verified
 - [x] Phase 4 complete and verified
-- [ ] Phase 5 complete and verified
+- [x] Phase 5 complete and verified
 - [ ] Phase 6 complete and verified
 - [ ] Phase 7 complete and verified
 - [ ] Phase 8 complete and verified
@@ -323,6 +323,44 @@ Verified: unit and integration tests pass with `-race`; the drop migration was
 applied, rolled back and reapplied on the test database; the development
 database was migrated (its 11 never-read outbox rows were removed) and event
 ingestion still returns `202` with the expected delivery.
+
+## Phase 5 Verification Notes (2026-10-17)
+
+Policy (documented in the README):
+- Retryable: transport errors, 408, 425, 429 and 5xx. Permanent: other
+  statuses, including 3xx because redirects are not followed, and local
+  failures such as an undecryptable endpoint secret
+- A 2xx counts as success even when reading the response body then fails
+- Delay after the n-th failure: uniform in [d/2, d], d = min(max, base·2^(n-1));
+  `Retry-After` raises it up to the cap; delays are applied with the database
+  clock (`now() + interval` in `CompleteDelivery`)
+- Dead letter after `WORKER_MAX_ATTEMPTS` failures or a permanent failure
+
+Schema (migration 20261017150000):
+- The `failed` status is removed; Phase 4 `failed` rows become `dead_letter`
+  because they were final under the Phase 4 policy
+- `deliveries.replay_of` links a replay to the delivery it repeats; the
+  `(event_id, endpoint_id)` uniqueness now applies to originals only, and a
+  partial unique index allows one unfinished replay per delivery
+- Down path restores the old constraints and deletes replay rows
+
+Acceptance evidence:
+- Deterministic bounds: unit tests check nominal delays for attempts 1..10, the
+  cap, overflow safety, that 2000 samples per attempt stay in [d/2, d] and span
+  it, and exact bounds for fixed random values
+- Non-retryable policy: classification table test; a 410 receiver is hit
+  exactly once in integration and on the development database
+- Dead letter: integration test and dev run reach `dead_letter` after exactly
+  `MaxAttempts` hits
+- Replay: creates a new delivery; eight concurrent replay requests create one;
+  a snapshot of the original row and its attempts is identical before and after
+  the replay is delivered
+- Dev run (base 1s, cap 4s, 3 attempts): retries at 0.81s/1.02s then 1.63s/2.02s
+  after the previous attempt, a 429 with `Retry-After: 3` waited 3.04s, and an
+  API replay of the dead-lettered delivery succeeded while a duplicate request
+  got `409 replay_in_progress`
+- Migration verified on the test database: `failed` rows convert, the new check
+  rejects `failed`, down and up both apply
 
 ## Migration Naming Convention
 

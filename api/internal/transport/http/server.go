@@ -13,10 +13,11 @@ import (
 const maxRequestBodyBytes = 1 << 20
 
 type Services struct {
-	Auth      *application.Authenticator
-	Projects  *application.ProjectService
-	Endpoints *application.EndpointService
-	Events    *application.EventService
+	Auth       *application.Authenticator
+	Projects   *application.ProjectService
+	Endpoints  *application.EndpointService
+	Events     *application.EventService
+	Deliveries *application.DeliveryService
 }
 
 type Server struct {
@@ -39,6 +40,7 @@ func NewServer(cfg config.Config, svc Services) *Server {
 	projects := projectHandler{projects: svc.Projects}
 	endpoints := endpointHandler{endpoints: svc.Endpoints}
 	events := eventHandler{events: svc.Events}
+	deliveries := deliveryHandler{deliveries: svc.Deliveries}
 
 	v1 := app.Group("/v1", authMiddleware(svc.Auth))
 	v1.Post("/projects", projects.create)
@@ -57,6 +59,8 @@ func NewServer(cfg config.Config, svc Services) *Server {
 	v1.Post("/projects/:id/events", events.ingest)
 	v1.Get("/projects/:id/events", events.list)
 	v1.Get("/events/:id", events.get)
+	v1.Get("/events/:id/deliveries", deliveries.listForEvent)
+	v1.Post("/deliveries/:id/replay", deliveries.replay)
 
 	return &Server{app: app, port: cfg.Port}
 }

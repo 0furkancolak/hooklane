@@ -104,6 +104,18 @@ func (s Deliveries) CountByEvent(ctx context.Context, eventID uuid.UUID) (int64,
 	return s.Store.CountDeliveriesByEvent(ctx, eventID)
 }
 
+func (s Deliveries) Get(ctx context.Context, id uuid.UUID) (domain.Delivery, error) {
+	return s.Store.GetDelivery(ctx, id)
+}
+
+func (s Deliveries) ListByEvent(ctx context.Context, eventID uuid.UUID) ([]domain.Delivery, error) {
+	return s.Store.ListDeliveriesByEvent(ctx, eventID)
+}
+
+func (s Deliveries) CreateReplay(ctx context.Context, originalID uuid.UUID) (domain.Delivery, error) {
+	return s.Store.CreateReplayDelivery(ctx, originalID)
+}
+
 func (s *Store) Orgs() Organizations    { return Organizations{Store: s} }
 func (s *Store) Projects() Projects     { return Projects{Store: s} }
 func (s *Store) Keys() APIKeys          { return APIKeys{Store: s} }

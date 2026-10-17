@@ -147,3 +147,36 @@ func TestSendReportsConnectionFailure(t *testing.T) {
 		t.Fatalf("expected connection error, got %+v", result)
 	}
 }
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	cases := map[string]time.Duration{
+		"":                              0,
+		"120":                           2 * time.Minute,
+		"0":                             0,
+		"-5":                            0,
+		"soon":                          0,
+		"Sat, 17 Oct 2026 12:05:00 GMT": 5 * time.Minute,
+		"Sat, 17 Oct 2026 11:00:00 GMT": 0,
+		"99999999999":                   7 * 24 * time.Hour,
+	}
+	for in, want := range cases {
+		if got := parseRetryAfter(in, now); got != want {
+			t.Errorf("%q: got %v want %v", in, got, want)
+		}
+	}
+}
+
+func TestSendReportsRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "90")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	result := NewSender(SenderConfig{}).Send(context.Background(), application.WebhookRequest{
+		URL: server.URL, Secret: testSecret, MessageID: "m", Body: []byte(`{}`),
+	})
+	if result.StatusCode != http.StatusTooManyRequests || result.RetryAfter != 90*time.Second {
+		t.Fatalf("result = %+v", result)
+	}
+}

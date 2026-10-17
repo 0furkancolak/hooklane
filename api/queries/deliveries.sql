@@ -1,18 +1,28 @@
 -- name: GetDelivery :one
-SELECT id, event_id, endpoint_id, status, attempt_count,
-       next_attempt_at, locked_until, last_response_status, last_error,
-       created_at, updated_at
-FROM deliveries
-WHERE id = $1;
+SELECT d.id, d.event_id, d.endpoint_id, p.organization_id, d.status, d.attempt_count,
+       d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
+       d.created_at, d.updated_at
+FROM deliveries d
+JOIN events e ON e.id = d.event_id
+JOIN projects p ON p.id = e.project_id
+WHERE d.id = $1;
 
--- name: ListDeliveriesByEndpoint :many
+-- name: ListDeliveriesByEvent :many
 SELECT id, event_id, endpoint_id, status, attempt_count,
-       next_attempt_at, locked_until, last_response_status, last_error,
+       next_attempt_at, last_response_status, last_error, replay_of,
        created_at, updated_at
 FROM deliveries
-WHERE endpoint_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
+WHERE event_id = $1
+ORDER BY created_at, id;
+
+-- name: CreateReplayDelivery :one
+INSERT INTO deliveries (event_id, endpoint_id, replay_of)
+SELECT event_id, endpoint_id, id
+FROM deliveries
+WHERE deliveries.id = sqlc.arg('original_id')
+RETURNING id, event_id, endpoint_id, status, attempt_count,
+          next_attempt_at, last_response_status, last_error, replay_of,
+          created_at, updated_at;
 
 -- name: CreateDeliveriesForEvent :execrows
 INSERT INTO deliveries (event_id, endpoint_id)
@@ -21,9 +31,10 @@ FROM endpoints
 WHERE project_id = sqlc.arg('project_id') AND enabled;
 
 -- name: CountDeliveriesByEvent :one
+-- Counts the fan-out of an event; replays are not part of it.
 SELECT count(*)::bigint
 FROM deliveries
-WHERE event_id = $1;
+WHERE event_id = $1 AND replay_of IS NULL;
 
 -- name: ClaimDeliveries :many
 -- Claims due pending deliveries and processing deliveries whose lease expired.
@@ -64,7 +75,11 @@ SET status = sqlc.arg('status'),
     locked_until = NULL,
     last_response_status = sqlc.narg('last_response_status'),
     last_error = sqlc.narg('last_error'),
-    next_attempt_at = coalesce(sqlc.narg('next_attempt_at'), next_attempt_at),
+    -- Retry delays are applied with the database clock, like leases.
+    next_attempt_at = CASE
+        WHEN sqlc.narg('retry_delay_seconds')::double precision IS NULL THEN next_attempt_at
+        ELSE now() + make_interval(secs => sqlc.narg('retry_delay_seconds')::double precision)
+    END,
     updated_at = now()
 WHERE id = sqlc.arg('id')
   AND lease_token = sqlc.arg('lease_token')
