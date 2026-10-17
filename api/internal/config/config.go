@@ -34,6 +34,9 @@ type WorkerConfig struct {
 	PollInterval    time.Duration
 	RequestTimeout  time.Duration
 	ShutdownTimeout time.Duration
+	MaxAttempts     int
+	RetryBaseDelay  time.Duration
+	RetryMaxDelay   time.Duration
 }
 
 // Lease leaves room after the request timeout to record the result, so a live
@@ -97,6 +100,18 @@ func loadWorker() (WorkerConfig, error) {
 	}
 	if w.ShutdownTimeout, err = getDuration("WORKER_SHUTDOWN_TIMEOUT", 20*time.Second, time.Second, 5*time.Minute); err != nil {
 		return w, err
+	}
+	if w.MaxAttempts, err = getInt("WORKER_MAX_ATTEMPTS", 10, 1, 50); err != nil {
+		return w, err
+	}
+	if w.RetryBaseDelay, err = getDuration("WORKER_RETRY_BASE_DELAY", 30*time.Second, 100*time.Millisecond, time.Hour); err != nil {
+		return w, err
+	}
+	if w.RetryMaxDelay, err = getDuration("WORKER_RETRY_MAX_DELAY", 4*time.Hour, 100*time.Millisecond, 7*24*time.Hour); err != nil {
+		return w, err
+	}
+	if w.RetryMaxDelay < w.RetryBaseDelay {
+		return w, fmt.Errorf("WORKER_RETRY_MAX_DELAY must not be smaller than WORKER_RETRY_BASE_DELAY")
 	}
 	return w, nil
 }

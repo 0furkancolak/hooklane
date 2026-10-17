@@ -28,6 +28,7 @@ type WorkerConfig struct {
 	// ShutdownTimeout bounds how long in-flight deliveries may finish after
 	// shutdown starts; afterwards they are cancelled and their leases expire.
 	ShutdownTimeout time.Duration
+	Retry           RetryPolicy
 }
 
 type DeliveryWorker struct {
@@ -41,6 +42,9 @@ type DeliveryWorker struct {
 func NewDeliveryWorker(queue DeliveryQueue, sender WebhookSender, secrets *SecretBox, cfg WorkerConfig, log *slog.Logger) (*DeliveryWorker, error) {
 	if cfg.Concurrency <= 0 || cfg.PollInterval <= 0 || cfg.Lease <= 0 || cfg.ShutdownTimeout <= 0 {
 		return nil, errors.New("worker config values must be positive")
+	}
+	if err := cfg.Retry.Validate(); err != nil {
+		return nil, err
 	}
 	if log == nil {
 		log = slog.Default()
@@ -133,18 +137,23 @@ func (w *DeliveryWorker) deliver(ctx context.Context, claim ClaimedDelivery) {
 	case err != nil:
 		log.Error("record delivery attempt", "error", err)
 	default:
-		log.Info("delivery attempted", "status", outcome.Status, "status_code", derefInt32(outcome.Attempt.StatusCode), "duration_ms", derefInt64(outcome.Attempt.DurationMS))
+		attrs := []any{"status", outcome.Status, "status_code", derefInt32(outcome.Attempt.StatusCode), "duration_ms", derefInt64(outcome.Attempt.DurationMS)}
+		if outcome.RetryDelay != nil {
+			attrs = append(attrs, "retry_in", outcome.RetryDelay.Round(time.Second).String())
+		}
+		log.Info("delivery attempted", attrs...)
 	}
 }
 
 func (w *DeliveryWorker) attempt(ctx context.Context, claim ClaimedDelivery) DeliveryOutcome {
 	secret, err := w.secrets.Open(claim.Endpoint.SecretEncrypted)
 	if err != nil {
-		return failedOutcome(nil, "", 0, errors.New("endpoint secret could not be decrypted"))
+		// Retrying cannot fix a secret encrypted under another key.
+		return w.failure(claim.Attempt, false, WebhookResult{Err: errors.New("endpoint secret could not be decrypted")})
 	}
 	body, err := WebhookBody(claim.Event)
 	if err != nil {
-		return failedOutcome(nil, "", 0, fmt.Errorf("encode webhook body: %w", err))
+		return w.failure(claim.Attempt, false, WebhookResult{Err: fmt.Errorf("encode webhook body: %w", err)})
 	}
 	result := w.sender.Send(ctx, WebhookRequest{
 		URL:       claim.Endpoint.URL,
@@ -152,44 +161,46 @@ func (w *DeliveryWorker) attempt(ctx context.Context, claim ClaimedDelivery) Del
 		MessageID: claim.Event.ID.String(),
 		Body:      body,
 	})
-	var status *int32
-	if result.StatusCode != 0 {
-		code := int32(result.StatusCode)
-		status = &code
+	succeeded, retryable := Classify(result)
+	if !succeeded {
+		return w.failure(claim.Attempt, retryable, result)
 	}
-	if result.Err == nil && result.StatusCode >= 200 && result.StatusCode < 300 {
-		ms := result.Duration.Milliseconds()
-		return DeliveryOutcome{
-			Status: domain.DeliverySucceeded,
-			Attempt: domain.DeliveryAttempt{
-				StatusCode:   status,
-				ResponseBody: &result.ResponseBody,
-				DurationMS:   &ms,
-			},
-		}
-	}
-	err = result.Err
+	// A 2xx is an acknowledgement even if reading the body then failed; the
+	// read error is kept for diagnostics.
+	return DeliveryOutcome{Status: domain.DeliverySucceeded, Attempt: attemptRecord(result, result.Err)}
+}
+
+func (w *DeliveryWorker) failure(attempt int32, retryable bool, result WebhookResult) DeliveryOutcome {
+	err := result.Err
 	if err == nil {
 		err = fmt.Errorf("endpoint responded with status %d", result.StatusCode)
 	}
-	// Retry scheduling is Phase 5; until then a failed attempt is final.
-	return failedOutcome(status, result.ResponseBody, result.Duration, err)
+	status, delay := w.cfg.Retry.Next(attempt, retryable, result.RetryAfter)
+	return DeliveryOutcome{Status: status, RetryDelay: delay, Attempt: attemptRecord(result, err)}
 }
 
-func failedOutcome(status *int32, body string, duration time.Duration, err error) DeliveryOutcome {
-	message := err.Error()
-	if len(message) > maxStoredErrorLength {
-		message = message[:maxStoredErrorLength]
+func attemptRecord(result WebhookResult, err error) domain.DeliveryAttempt {
+	var attempt domain.DeliveryAttempt
+	if result.StatusCode != 0 {
+		code := int32(result.StatusCode)
+		attempt.StatusCode = &code
 	}
-	attempt := domain.DeliveryAttempt{StatusCode: status, Error: &message}
-	if body != "" {
+	if result.ResponseBody != "" {
+		body := result.ResponseBody
 		attempt.ResponseBody = &body
 	}
-	if duration > 0 {
-		ms := duration.Milliseconds()
+	if result.Duration > 0 {
+		ms := result.Duration.Milliseconds()
 		attempt.DurationMS = &ms
 	}
-	return DeliveryOutcome{Status: domain.DeliveryFailed, Attempt: attempt}
+	if err != nil {
+		message := err.Error()
+		if len(message) > maxStoredErrorLength {
+			message = message[:maxStoredErrorLength]
+		}
+		attempt.Error = &message
+	}
+	return attempt
 }
 
 // WebhookBody is the JSON document POSTed to endpoints. It depends only on the

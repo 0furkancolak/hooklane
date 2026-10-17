@@ -104,7 +104,11 @@ SET status = $1,
     locked_until = NULL,
     last_response_status = $2,
     last_error = $3,
-    next_attempt_at = coalesce($4, next_attempt_at),
+    -- Retry delays are applied with the database clock, like leases.
+    next_attempt_at = CASE
+        WHEN $4::double precision IS NULL THEN next_attempt_at
+        ELSE now() + make_interval(secs => $4::double precision)
+    END,
     updated_at = now()
 WHERE id = $5
   AND lease_token = $6
@@ -115,7 +119,7 @@ type CompleteDeliveryParams struct {
 	Status             string
 	LastResponseStatus pgtype.Int4
 	LastError          pgtype.Text
-	NextAttemptAt      pgtype.Timestamptz
+	RetryDelaySeconds  pgtype.Float8
 	ID                 pgtype.UUID
 	LeaseToken         pgtype.UUID
 }
@@ -125,7 +129,7 @@ func (q *Queries) CompleteDelivery(ctx context.Context, arg CompleteDeliveryPara
 		arg.Status,
 		arg.LastResponseStatus,
 		arg.LastError,
-		arg.NextAttemptAt,
+		arg.RetryDelaySeconds,
 		arg.ID,
 		arg.LeaseToken,
 	)
@@ -138,9 +142,10 @@ func (q *Queries) CompleteDelivery(ctx context.Context, arg CompleteDeliveryPara
 const countDeliveriesByEvent = `-- name: CountDeliveriesByEvent :one
 SELECT count(*)::bigint
 FROM deliveries
-WHERE event_id = $1
+WHERE event_id = $1 AND replay_of IS NULL
 `
 
+// Counts the fan-out of an event; replays are not part of it.
 func (q *Queries) CountDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countDeliveriesByEvent, eventID)
 	var column_1 int64
@@ -168,24 +173,70 @@ func (q *Queries) CreateDeliveriesForEvent(ctx context.Context, arg CreateDelive
 	return result.RowsAffected(), nil
 }
 
-const getDelivery = `-- name: GetDelivery :one
-SELECT id, event_id, endpoint_id, status, attempt_count,
-       next_attempt_at, locked_until, last_response_status, last_error,
-       created_at, updated_at
+const createReplayDelivery = `-- name: CreateReplayDelivery :one
+INSERT INTO deliveries (event_id, endpoint_id, replay_of)
+SELECT event_id, endpoint_id, id
 FROM deliveries
-WHERE id = $1
+WHERE deliveries.id = $1
+RETURNING id, event_id, endpoint_id, status, attempt_count,
+          next_attempt_at, last_response_status, last_error, replay_of,
+          created_at, updated_at
 `
 
-type GetDeliveryRow struct {
+type CreateReplayDeliveryRow struct {
 	ID                 pgtype.UUID
 	EventID            pgtype.UUID
 	EndpointID         pgtype.UUID
 	Status             string
 	AttemptCount       int32
 	NextAttemptAt      pgtype.Timestamptz
-	LockedUntil        pgtype.Timestamptz
 	LastResponseStatus pgtype.Int4
 	LastError          pgtype.Text
+	ReplayOf           pgtype.UUID
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+func (q *Queries) CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error) {
+	row := q.db.QueryRow(ctx, createReplayDelivery, originalID)
+	var i CreateReplayDeliveryRow
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.EndpointID,
+		&i.Status,
+		&i.AttemptCount,
+		&i.NextAttemptAt,
+		&i.LastResponseStatus,
+		&i.LastError,
+		&i.ReplayOf,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDelivery = `-- name: GetDelivery :one
+SELECT d.id, d.event_id, d.endpoint_id, p.organization_id, d.status, d.attempt_count,
+       d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
+       d.created_at, d.updated_at
+FROM deliveries d
+JOIN events e ON e.id = d.event_id
+JOIN projects p ON p.id = e.project_id
+WHERE d.id = $1
+`
+
+type GetDeliveryRow struct {
+	ID                 pgtype.UUID
+	EventID            pgtype.UUID
+	EndpointID         pgtype.UUID
+	OrganizationID     pgtype.UUID
+	Status             string
+	AttemptCount       int32
+	NextAttemptAt      pgtype.Timestamptz
+	LastResponseStatus pgtype.Int4
+	LastError          pgtype.Text
+	ReplayOf           pgtype.UUID
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
 }
@@ -197,12 +248,13 @@ func (q *Queries) GetDelivery(ctx context.Context, id pgtype.UUID) (GetDeliveryR
 		&i.ID,
 		&i.EventID,
 		&i.EndpointID,
+		&i.OrganizationID,
 		&i.Status,
 		&i.AttemptCount,
 		&i.NextAttemptAt,
-		&i.LockedUntil,
 		&i.LastResponseStatus,
 		&i.LastError,
+		&i.ReplayOf,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -235,45 +287,38 @@ func (q *Queries) InsertDeliveryAttempt(ctx context.Context, arg InsertDeliveryA
 	return err
 }
 
-const listDeliveriesByEndpoint = `-- name: ListDeliveriesByEndpoint :many
+const listDeliveriesByEvent = `-- name: ListDeliveriesByEvent :many
 SELECT id, event_id, endpoint_id, status, attempt_count,
-       next_attempt_at, locked_until, last_response_status, last_error,
+       next_attempt_at, last_response_status, last_error, replay_of,
        created_at, updated_at
 FROM deliveries
-WHERE endpoint_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+WHERE event_id = $1
+ORDER BY created_at, id
 `
 
-type ListDeliveriesByEndpointParams struct {
-	EndpointID pgtype.UUID
-	Limit      int32
-	Offset     int32
-}
-
-type ListDeliveriesByEndpointRow struct {
+type ListDeliveriesByEventRow struct {
 	ID                 pgtype.UUID
 	EventID            pgtype.UUID
 	EndpointID         pgtype.UUID
 	Status             string
 	AttemptCount       int32
 	NextAttemptAt      pgtype.Timestamptz
-	LockedUntil        pgtype.Timestamptz
 	LastResponseStatus pgtype.Int4
 	LastError          pgtype.Text
+	ReplayOf           pgtype.UUID
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
 }
 
-func (q *Queries) ListDeliveriesByEndpoint(ctx context.Context, arg ListDeliveriesByEndpointParams) ([]ListDeliveriesByEndpointRow, error) {
-	rows, err := q.db.Query(ctx, listDeliveriesByEndpoint, arg.EndpointID, arg.Limit, arg.Offset)
+func (q *Queries) ListDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) ([]ListDeliveriesByEventRow, error) {
+	rows, err := q.db.Query(ctx, listDeliveriesByEvent, eventID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDeliveriesByEndpointRow{}
+	items := []ListDeliveriesByEventRow{}
 	for rows.Next() {
-		var i ListDeliveriesByEndpointRow
+		var i ListDeliveriesByEventRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventID,
@@ -281,9 +326,9 @@ func (q *Queries) ListDeliveriesByEndpoint(ctx context.Context, arg ListDeliveri
 			&i.Status,
 			&i.AttemptCount,
 			&i.NextAttemptAt,
-			&i.LockedUntil,
 			&i.LastResponseStatus,
 			&i.LastError,
+			&i.ReplayOf,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

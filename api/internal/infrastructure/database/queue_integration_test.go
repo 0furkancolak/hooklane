@@ -265,7 +265,10 @@ func TestIntegrationWorkerDeliversSignedWebhooks(t *testing.T) {
 	ids := tn.ingest(t, 3)
 
 	worker, err := application.NewDeliveryWorker(tn.store.Queue(), webhook.NewSender(webhook.SenderConfig{RequestTimeout: 5 * time.Second}), box,
-		application.WorkerConfig{Concurrency: 4, PollInterval: 20 * time.Millisecond, Lease: time.Minute, ShutdownTimeout: 5 * time.Second},
+		application.WorkerConfig{Concurrency: 4, PollInterval: 20 * time.Millisecond, Lease: time.Minute, ShutdownTimeout: 5 * time.Second,
+			// One attempt so the failing endpoint reaches a final state here;
+			// retries are covered in retry_integration_test.go.
+			Retry: application.RetryPolicy{MaxAttempts: 1, BaseDelay: time.Second, MaxDelay: time.Second}},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -345,7 +348,7 @@ func TestIntegrationWorkerDeliversSignedWebhooks(t *testing.T) {
 				t.Fatalf("ok delivery = %+v", r)
 			}
 		case failEndpoint.ID:
-			if r.status != "failed" || *r.code != 503 || *r.respBody != "down for maintenance" || r.errText == nil {
+			if r.status != "dead_letter" || *r.code != 503 || *r.respBody != "down for maintenance" || r.errText == nil {
 				t.Fatalf("failed delivery = %+v", r)
 			}
 		}

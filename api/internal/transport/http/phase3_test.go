@@ -51,10 +51,11 @@ func newTestEnv(t *testing.T, env config.AppEnv) testEnv {
 	}
 	cfg := config.Config{Port: "8080", AppEnv: env}
 	server := NewServer(cfg, Services{
-		Auth:      application.NewAuthenticator(store.Keys()),
-		Projects:  application.NewProjectService(store.Projects(), store.Keys()),
-		Endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), box, cfg.AllowInsecureHTTP()),
-		Events:    application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
+		Auth:       application.NewAuthenticator(store.Keys()),
+		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
+		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, cfg.AllowInsecureHTTP()),
+		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
+		Deliveries: application.NewDeliveryService(store.Events(), store.Deliveries()),
 	})
 	return testEnv{server: server, store: store, key: raw, project: project, foreign: foreign}
 }
@@ -166,5 +167,50 @@ func TestEventRoutes(t *testing.T) {
 	}
 	if events, deliveries := env.store.Counts(); events != 1 || deliveries != 1 {
 		t.Fatalf("counts events=%d deliveries=%d", events, deliveries)
+	}
+}
+
+func TestDeliveryRoutes(t *testing.T) {
+	env := newTestEnv(t, config.AppEnvProduction)
+	ctx := context.Background()
+	if _, err := env.store.Endpoints().Create(ctx, domain.Endpoint{ProjectID: env.project.ID, URL: "https://example.com", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	_, ingested := env.do(t, "POST", "/v1/projects/"+env.project.ID.String()+"/events", `{"event_type":"a","payload":{}}`)
+	eventID := ingested["id"].(string)
+
+	resp, list := env.do(t, "GET", "/v1/events/"+eventID+"/deliveries", "")
+	if resp.StatusCode != stdhttp.StatusOK {
+		t.Fatalf("list: %d", resp.StatusCode)
+	}
+	deliveries := list["deliveries"].([]any)
+	original := deliveries[0].(map[string]any)
+	if len(deliveries) != 1 || original["status"] != "pending" || original["next_attempt_at"] == nil || original["replay_of"] != nil {
+		t.Fatalf("deliveries = %v", deliveries)
+	}
+	originalID := original["id"].(string)
+
+	resp, body := env.do(t, "POST", "/v1/deliveries/"+originalID+"/replay", "")
+	if resp.StatusCode != stdhttp.StatusConflict || body["error"].(map[string]any)["code"] != "delivery_not_finished" {
+		t.Fatalf("replay of pending: %d %v", resp.StatusCode, body)
+	}
+	env.store.SetDeliveryStatus(uuid.MustParse(originalID), domain.DeliveryDeadLetter)
+
+	resp, body = env.do(t, "POST", "/v1/deliveries/"+originalID+"/replay", "")
+	if resp.StatusCode != stdhttp.StatusCreated || body["replay_of"] != originalID || body["status"] != "pending" {
+		t.Fatalf("replay: %d %v", resp.StatusCode, body)
+	}
+	resp, body = env.do(t, "POST", "/v1/deliveries/"+originalID+"/replay", "")
+	if resp.StatusCode != stdhttp.StatusConflict || body["error"].(map[string]any)["code"] != "replay_in_progress" {
+		t.Fatalf("duplicate replay: %d %v", resp.StatusCode, body)
+	}
+
+	foreignEvent, err := env.store.Events().InsertIdempotent(ctx, domain.Event{ProjectID: env.foreign.ID, EventType: "x", Payload: []byte(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, _ = env.do(t, "GET", "/v1/events/"+foreignEvent.Event.ID.String()+"/deliveries", "")
+	if resp.StatusCode != stdhttp.StatusForbidden {
+		t.Fatalf("cross-tenant list: %d", resp.StatusCode)
 	}
 }

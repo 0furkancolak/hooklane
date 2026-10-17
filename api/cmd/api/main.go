@@ -39,10 +39,11 @@ func main() {
 
 	store := database.NewStore(pool)
 	server := httpserver.NewServer(cfg, httpserver.Services{
-		Auth:      application.NewAuthenticator(store.Keys()),
-		Projects:  application.NewProjectService(store.Projects(), store.Keys()),
-		Endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), secrets, cfg.AllowInsecureHTTP()),
-		Events:    application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
+		Auth:       application.NewAuthenticator(store.Keys()),
+		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
+		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), secrets, cfg.AllowInsecureHTTP()),
+		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
+		Deliveries: application.NewDeliveryService(store.Events(), store.Deliveries()),
 	})
 
 	errCh := make(chan error, 1)

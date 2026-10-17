@@ -16,6 +16,7 @@ type Querier interface {
 	// re-enabled. SKIP LOCKED lets concurrent workers claim disjoint rows.
 	ClaimDeliveries(ctx context.Context, arg ClaimDeliveriesParams) ([]ClaimDeliveriesRow, error)
 	CompleteDelivery(ctx context.Context, arg CompleteDeliveryParams) (int64, error)
+	// Counts the fan-out of an event; replays are not part of it.
 	CountDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) (int64, error)
 	CountOrganizations(ctx context.Context) (int64, error)
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
@@ -23,6 +24,7 @@ type Querier interface {
 	CreateEndpoint(ctx context.Context, arg CreateEndpointParams) (Endpoint, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
+	CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error)
 	GetAPIKey(ctx context.Context, id pgtype.UUID) (GetAPIKeyRow, error)
 	GetAPIKeyByHash(ctx context.Context, keyHash []byte) (GetAPIKeyByHashRow, error)
 	GetDelivery(ctx context.Context, id pgtype.UUID) (GetDeliveryRow, error)
@@ -34,7 +36,7 @@ type Querier interface {
 	InsertDeliveryAttempt(ctx context.Context, arg InsertDeliveryAttemptParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) (Event, error)
 	ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUID) ([]ListAPIKeysByProjectRow, error)
-	ListDeliveriesByEndpoint(ctx context.Context, arg ListDeliveriesByEndpointParams) ([]ListDeliveriesByEndpointRow, error)
+	ListDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) ([]ListDeliveriesByEventRow, error)
 	ListEndpointsByProject(ctx context.Context, arg ListEndpointsByProjectParams) ([]Endpoint, error)
 	ListEventsByProject(ctx context.Context, arg ListEventsByProjectParams) ([]Event, error)
 	ListProjectsByOrganization(ctx context.Context, arg ListProjectsByOrganizationParams) ([]Project, error)

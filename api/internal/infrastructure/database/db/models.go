@@ -32,6 +32,7 @@ type Delivery struct {
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
 	LeaseToken         pgtype.UUID
+	ReplayOf           pgtype.UUID
 }
 
 type DeliveryAttempt struct {
