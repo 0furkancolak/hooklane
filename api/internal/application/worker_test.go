@@ -24,9 +24,17 @@ type fakeQueue struct {
 	claimsAfterStop atomic.Int32
 	stopped         atomic.Bool
 	completeErr     error
+	// failClaims makes the next N claims fail, as during a database outage.
+	failClaims atomic.Int32
+	claimCalls atomic.Int32
 }
 
 func (q *fakeQueue) Claim(ctx context.Context, batch int32, _ time.Duration) ([]application.ClaimedDelivery, error) {
+	q.claimCalls.Add(1)
+	if q.failClaims.Load() > 0 {
+		q.failClaims.Add(-1)
+		return nil, errors.New("connection refused")
+	}
 	if q.stopped.Load() {
 		q.claimsAfterStop.Add(1)
 	}
@@ -447,5 +455,25 @@ func TestWorkerReportsToObserver(t *testing.T) {
 		if observer.results[status] != n {
 			t.Fatalf("results = %v", observer.results)
 		}
+	}
+}
+
+func TestWorkerRecoversFromClaimFailures(t *testing.T) {
+	box, _ := application.NewSecretBox(make([]byte, 32))
+	claims := newClaims(t, box, 2)
+	queue := &fakeQueue{pending: claims}
+	queue.failClaims.Store(3)
+	w := newWorker(t, queue, &fakeSender{}, box, application.WorkerConfig{Concurrency: 2})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	waitFor(t, func() bool { return queue.done() == 2 })
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run must not give up on transient claim errors: %v", err)
+	}
+	if queue.claimCalls.Load() < 4 {
+		t.Fatalf("claim calls = %d, want retries after failures", queue.claimCalls.Load())
 	}
 }

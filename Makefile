@@ -6,6 +6,7 @@ GOOSE = cd api && go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migr
 
 test:
 	cd api && go vet ./... && go test -race ./...
+	cd web && npm test
 
 # Creates the hooklane_test database if missing and migrates it. The
 # development database is never touched.

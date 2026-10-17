@@ -14,10 +14,14 @@ api/                                Go module (github.com/0furkancolak/hooklane/
   internal/application              Use cases, worker, repository interfaces
   internal/infrastructure/database  PostgreSQL repositories and sqlc output (db/)
   internal/infrastructure/webhook   Webhook signing and outbound HTTP
+  internal/infrastructure/metrics   Prometheus metrics and the ops listener
   internal/transport/http           Fiber HTTP API
   migrations/                       Goose SQL migrations
   queries/                          sqlc queries
 web/                                React + TypeScript + Vite dashboard
+  src/app                           Shell, layout and routing
+  src/features                      One folder per area: auth, projects, endpoints, events, deliveries
+  src/shared                        API client, session, router, UI primitives
 docs/                               Architecture and phase plans
 ```
 
@@ -45,6 +49,8 @@ In another terminal:
 ```sh
 make dev-web
 ```
+
+The dev server proxies `/v1`, `/healthz` and `/readyz` to `http://127.0.0.1:8080`; set `HOOKLANE_API_URL` when the API runs elsewhere (for example `HOOKLANE_API_URL=http://127.0.0.1:18080 make dev-web`).
 
 Bootstrap the first organization, project, and API key:
 
@@ -126,6 +132,20 @@ Replaying creates a new `pending` delivery with `replay_of` set and a fresh retr
 | `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
 | `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
 | `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |
+
+## Dashboard
+
+The dashboard signs in with an API key and only calls the documented `/v1` API, so it can see exactly what the key's organization can see.
+
+- **Projects and overview**: delivery counts by status, with links to filtered lists, and a warning when due deliveries are waiting for a worker.
+- **Endpoints**: add an endpoint (the signing secret is shown once, with a copy button), edit its URL, enable or disable it, and reveal the secret on request. Blocked destinations are explained.
+- **Events**: filter by type, then open an event to see its payload and every delivery, including replays.
+- **Deliveries**: filter by status or endpoint (filters live in the URL, so views can be shared), page through history, and open a delivery to see each attempt's status code, response excerpt, error and duration.
+- **Replay**: available only for succeeded or dead-lettered deliveries, asks for confirmation, and opens the new delivery. A `409` (for example, a replay already in progress) is shown inline.
+
+The key is kept in the tab's `sessionStorage`. It is dropped when the tab closes, on sign-out, or as soon as the API answers `401` (for example, after the key is revoked). It is never put in `localStorage`, cookies or URLs. Any script running on the dashboard's origin could read it, so serve the dashboard only from an origin you control. API keys have no per-action scopes yet: any key of an organization can replay that organization's deliveries.
+
+`npm test` runs the component tests (Vitest, Testing Library, jsdom); `npm run build` type-checks and builds `web/dist`.
 
 ## Operations
 
