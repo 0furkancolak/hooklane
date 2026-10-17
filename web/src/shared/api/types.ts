@@ -18,6 +18,17 @@ export type Endpoint = {
 
 export type CreatedEndpoint = Endpoint & { secret: string };
 
+export type APIKey = {
+  id: string;
+  project_id: string;
+  name: string;
+  prefix: string;
+  revoked: boolean;
+  created_at: string;
+};
+
+export type CreatedAPIKey = APIKey & { raw_key: string };
+
 export type HooklaneEvent = {
   id: string;
   project_id: string;

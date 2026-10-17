@@ -58,8 +58,9 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
           {checking ? "Checking…" : "Sign in"}
         </button>
         <p className="hint">
-          The key is kept in this tab's session storage only and is sent solely to this Hooklane API. Create one with{" "}
-          <code>admin bootstrap</code> or <code>POST /v1/projects/&#123;id&#125;/api-keys</code>.
+          The key is kept in this tab's session storage only and is sent solely to this Hooklane API. Create the first one with{" "}
+          <code>admin bootstrap</code> (<code>make dev</code> saves it to <code>.dev/api-key</code>); once signed in, generate more under
+          a project's API keys page.
         </p>
       </form>
     </main>

@@ -6,6 +6,7 @@ import { Empty } from "../shared/ui/States";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { OverviewPage } from "../features/projects/OverviewPage";
 import { EndpointsPage } from "../features/endpoints/EndpointsPage";
+import { APIKeysPage } from "../features/apikeys/APIKeysPage";
 import { EventsPage } from "../features/events/EventsPage";
 import { EventDetailPage } from "../features/events/EventDetailPage";
 import { DeliveriesPage } from "../features/deliveries/DeliveriesPage";
@@ -41,6 +42,7 @@ function ProjectNav({ projectId, route }: { projectId: string; route: Route }) {
     { label: "Endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
     { label: "Events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
     { label: "Deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
+    { label: "API keys", target: href("projects", projectId, "api-keys"), active: route.name === "api_keys" },
   ];
   return (
     <nav aria-label="Project">
@@ -69,6 +71,8 @@ function Page({ route }: { route: Route }) {
       return <OverviewPage projectId={route.projectId} />;
     case "endpoints":
       return <EndpointsPage projectId={route.projectId} />;
+    case "api_keys":
+      return <APIKeysPage projectId={route.projectId} />;
     case "events":
       return <EventsPage projectId={route.projectId} />;
     case "event":

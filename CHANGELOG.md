@@ -10,6 +10,7 @@ include breaking changes, which are called out.
 ### Added
 
 - `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.
+- Dashboard API keys page: generate a key for a project (shown once, with a copy button), see each key's prefix and status, and revoke it.
 
 ## [0.1.0] - 2026-10-17
 
