@@ -1,67 +1,134 @@
 # Hooklane
 
-Open-source, self-hostable webhook delivery platform.
+Open-source, self-hostable webhook delivery. Your application sends events to
+Hooklane's API; Hooklane signs them, delivers them to your customers'
+endpoints, retries failures with backoff, dead-letters what cannot be
+delivered and lets you replay it, all on PostgreSQL alone.
 
-## Repository layout
+- Signed deliveries compatible with [Standard Webhooks](https://www.standardwebhooks.com)
+- Idempotent event ingestion
+- Retries with jittered exponential backoff, `Retry-After`, dead letters and manual replay
+- Attempt history with status codes, response excerpts and errors
+- SSRF protection that checks the resolved address of every connection
+- Multi-tenant organizations, projects and API keys
+- Dashboard, Prometheus metrics, health and readiness probes, JSON logs
+- One container image; no Redis, Kafka or other infrastructure
 
-```
-api/                                Go module (github.com/0furkancolak/hooklane/api)
-  cmd/api                           HTTP API process
-  cmd/worker                        Delivery worker process
-  cmd/admin                         Administrator CLI
-  internal/config                   Environment loading
-  internal/domain                   Domain types
-  internal/application              Use cases, worker, repository interfaces
-  internal/infrastructure/database  PostgreSQL repositories and sqlc output (db/)
-  internal/infrastructure/webhook   Webhook signing and outbound HTTP
-  internal/infrastructure/metrics   Prometheus metrics and the ops listener
-  internal/transport/http           Fiber HTTP API
-  migrations/                       Goose SQL migrations
-  queries/                          sqlc queries
-web/                                React + TypeScript + Vite dashboard
-  src/app                           Shell, layout and routing
-  src/features                      One folder per area: auth, projects, endpoints, events, deliveries
-  src/shared                        API client, session, router, UI primitives
-docs/                               Architecture and phase plans
-```
+## Quick start
 
-Go commands run inside `api/`; npm commands run inside `web/`. The Makefile wraps both.
-
-## Local development
-
-Copy `.env.example` to `.env`, set `ENDPOINT_SECRET_KEY` (`openssl rand -base64 32`), and load it into your shell with `set -a; . ./.env; set +a`.
-
-PostgreSQL listens on `127.0.0.1:5433` by default; override with `POSTGRES_PORT`.
+Requirements: Docker with Compose, `openssl` and `curl`.
 
 ```sh
-docker compose up -d postgres
-make migrate-up
-make sqlc-up
-(cd web && npm install)
-make test
-make test-integration   # uses a separate hooklane_test database
-make dev-api
-make dev-worker
+git clone https://github.com/0furkancolak/hooklane.git && cd hooklane
+cp .env.example .env
+echo "ENDPOINT_SECRET_KEY=$(openssl rand -base64 32)" >> .env
+docker compose --profile app up -d --build
+docker compose --profile app run --rm migrate hooklane-admin bootstrap -org-name Acme -org-slug acme
 ```
 
-In another terminal:
+The last command prints `project_id` and an `api_key` (shown only once).
+Open the dashboard at <http://localhost:8090> and sign in with the key. The
+stack runs with `APP_ENV=production`, so endpoints must be public `https`
+URLs; add `HOOKLANE_APP_ENV=development` to `.env` to try local `http`
+receivers.
+
+Send your first webhook:
 
 ```sh
-make dev-web
+export KEY=hlk_... PROJECT_ID=...
+
+# Register a receiver; the response includes its signing secret.
+curl -s localhost:8090/v1/projects/$PROJECT_ID/endpoints \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/webhooks"}'
+
+# Send an event; Hooklane delivers it to every enabled endpoint.
+curl -s localhost:8090/v1/projects/$PROJECT_ID/events \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-42-created" \
+  -d '{"event_type":"order.created","payload":{"id":42}}'
 ```
 
-The dev server proxies `/v1`, `/healthz` and `/readyz` to `http://127.0.0.1:8080`; set `HOOKLANE_API_URL` when the API runs elsewhere (for example `HOOKLANE_API_URL=http://127.0.0.1:18080 make dev-web`).
+Follow the delivery in the dashboard or with
+`GET /v1/projects/$PROJECT_ID/deliveries`. See
+[docs/deployment.md](docs/deployment.md) for production setup and every
+configuration variable.
 
-Bootstrap the first organization, project, and API key:
+## Receiving webhooks
 
-```sh
-export DATABASE_URL=postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane?sslmode=disable
-cd api && go run ./cmd/admin bootstrap -org-name Acme -org-slug acme -project-name default
+Each delivery is a `POST` with a JSON body and three headers:
+
+```http
+POST /webhooks HTTP/1.1
+Content-Type: application/json
+webhook-id: 0b8f6c1e-0f9d-4f43-9d0c-6f3c1f0d2a11
+webhook-timestamp: 1792236000
+webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=
+
+{"id":"0b8f6c1e-…","type":"order.created","timestamp":"2026-10-17T12:00:00Z","data":{"id":42}}
 ```
 
-The CLI prints the raw API key once. Use it as `Authorization: Bearer <key>` against `/v1`.
+To verify a request:
+
+1. Reject it if `webhook-timestamp` is more than 5 minutes from your clock.
+2. Compute `HMAC-SHA256(key, "<webhook-id>.<webhook-timestamp>.<raw body>")`, where `key` is the endpoint secret without its `whsec_` prefix, base64-decoded.
+3. Compare it in constant time with each space-separated `v1,<base64>` entry of `webhook-signature`.
+
+Verify the raw bytes before parsing the JSON. Any Standard Webhooks library
+works. [examples/receiver-go](examples/receiver-go) and
+[examples/receiver-node](examples/receiver-node) are dependency-free
+receivers with tests against the specification's test vector.
+
+Respond with any `2xx` within `WORKER_REQUEST_TIMEOUT` (15s by default) to
+acknowledge. Do slow work after responding.
+
+## Delivery guarantees
+
+- **At least once.** A delivery can be sent more than once, for example when a worker dies after sending but before recording the result, or when your receiver answers too slowly. `webhook-id` is the event ID and stays the same on every retry and replay, so store processed IDs and skip repeats.
+- **No ordering guarantee.** Deliveries run concurrently and retries reorder them. Use the event `timestamp` or your own sequence numbers if order matters.
+- **Every attempt is recorded.** The history is immutable; replays create new deliveries.
+- **Accepted means stored.** A `202` response means the event and its deliveries are committed. Deliveries go to the endpoints that were enabled at that moment.
+
+The worker POSTs `{"id", "type", "timestamp", "data"}` signed with Standard Webhooks headers (`webhook-id` is the event ID, so receivers can deduplicate). Delivery is at-least-once.
+
+| Outcome | Result |
+| --- | --- |
+| `2xx` | `succeeded` |
+| Network error, timeout, `408`, `425`, `429`, `5xx` | Retried |
+| Blocked destination address | `dead_letter` immediately |
+| Any other status, including `3xx` (redirects are not followed) | `dead_letter` immediately |
+
+After the n-th failed attempt the next attempt waits a random duration in `[d/2, d]`, where `d = min(WORKER_RETRY_MAX_DELAY, WORKER_RETRY_BASE_DELAY × 2^(n-1))`. A `Retry-After` header can lengthen the wait up to the maximum. After `WORKER_MAX_ATTEMPTS` failed attempts the delivery becomes `dead_letter`. With the defaults (10 attempts, 30s base, 4h cap) the last attempt happens roughly 2 to 4.3 hours after the first.
+
+Replaying creates a new `pending` delivery with `replay_of` set and a fresh retry budget. The original delivery and its attempts are never modified. Only one unfinished replay per delivery is allowed (`409 replay_in_progress`). Deliveries for disabled endpoints wait until the endpoint is re-enabled.
+
+| Worker variable | Default | Meaning |
+| --- | --- | --- |
+| `WORKER_CONCURRENCY` | `10` | Deliveries in flight |
+| `WORKER_POLL_INTERVAL` | `1s` | Idle wait between claims |
+| `WORKER_REQUEST_TIMEOUT` | `15s` | Whole request; the lease is this plus 30s |
+| `WORKER_SHUTDOWN_TIMEOUT` | `20s` | Drain time before in-flight requests are cancelled |
+| `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
+| `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
+| `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |
+
+## Retention
+
+The worker deletes events older than `RETENTION_PERIOD` (default `720h`, 30
+days) once none of their deliveries is pending or in flight. Their deliveries
+and attempts are deleted with them; an idempotency key becomes reusable when
+its event is deleted. Events that still have unfinished deliveries, including
+deliveries held for a disabled endpoint, are kept until those finish. Pruning
+runs hourly in batches of 1000, and several workers can prune at once. Set
+`RETENTION_PERIOD=0` to keep everything, and run
+`hooklane-admin prune -older-than 2160h` to prune on demand.
+`hooklane_retention_deleted_events_total` counts deletions.
 
 ## API overview
+
+The full description is [api/openapi/openapi.yaml](api/openapi/openapi.yaml),
+also served by the API at `/openapi.yaml`. Project and API key routes are
+listed there.
 
 All `/v1` routes require `Authorization: Bearer <key>`. Access is scoped to the key's organization.
 
@@ -88,7 +155,7 @@ Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=developmen
 ### Accepting events
 
 ```sh
-curl -X POST localhost:8080/v1/projects/$PROJECT_ID/events \
+curl -X POST localhost:8090/v1/projects/$PROJECT_ID/events \
   -H "Authorization: Bearer $KEY" \
   -H "Idempotency-Key: order-42-created" \
   -H "Content-Type: application/json" \
@@ -107,31 +174,6 @@ curl -X POST localhost:8080/v1/projects/$PROJECT_ID/events \
 - Same key, different `event_type` or payload: `409` with code `idempotency_conflict`.
 - Concurrent requests with the same key create exactly one event.
 - Keys stay reserved for as long as the event is retained.
-
-### Delivery, retries and replay
-
-The worker POSTs `{"id", "type", "timestamp", "data"}` signed with Standard Webhooks headers (`webhook-id` is the event ID, so receivers can deduplicate). Delivery is at-least-once.
-
-| Outcome | Result |
-| --- | --- |
-| `2xx` | `succeeded` |
-| Network error, timeout, `408`, `425`, `429`, `5xx` | Retried |
-| Blocked destination address | `dead_letter` immediately |
-| Any other status, including `3xx` (redirects are not followed) | `dead_letter` immediately |
-
-After the n-th failed attempt the next attempt waits a random duration in `[d/2, d]`, where `d = min(WORKER_RETRY_MAX_DELAY, WORKER_RETRY_BASE_DELAY × 2^(n-1))`. A `Retry-After` header can lengthen the wait up to the maximum. After `WORKER_MAX_ATTEMPTS` failed attempts the delivery becomes `dead_letter`. With the defaults (10 attempts, 30s base, 4h cap) the last attempt happens roughly 2 to 4.3 hours after the first.
-
-Replaying creates a new `pending` delivery with `replay_of` set and a fresh retry budget. The original delivery and its attempts are never modified. Only one unfinished replay per delivery is allowed (`409 replay_in_progress`). Deliveries for disabled endpoints wait until the endpoint is re-enabled.
-
-| Worker variable | Default | Meaning |
-| --- | --- | --- |
-| `WORKER_CONCURRENCY` | `10` | Deliveries in flight |
-| `WORKER_POLL_INTERVAL` | `1s` | Idle wait between claims |
-| `WORKER_REQUEST_TIMEOUT` | `15s` | Whole request; the lease is this plus 30s |
-| `WORKER_SHUTDOWN_TIMEOUT` | `20s` | Drain time before in-flight requests are cancelled |
-| `WORKER_MAX_ATTEMPTS` | `10` | Attempts before dead-lettering |
-| `WORKER_RETRY_BASE_DELAY` | `30s` | First retry delay upper bound |
-| `WORKER_RETRY_MAX_DELAY` | `4h` | Cap for any single delay |
 
 ## Dashboard
 
@@ -221,3 +263,71 @@ Endpoint URLs are chosen by tenants, so the worker treats every destination as u
 - Run the worker with egress that does not depend on Hooklane's checks alone where possible, for example a network policy or firewall that also blocks internal ranges.
 - Ports are not restricted; receivers often use non-standard ports, and internal services are already unreachable through the address checks.
 - A public address that forwards to internal systems (such as an open reverse proxy you operate) is outside what address filtering can detect.
+
+Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
+## Development
+
+Copy `.env.example` to `.env`, set `ENDPOINT_SECRET_KEY` (`openssl rand -base64 32`), and load it into your shell with `set -a; . ./.env; set +a`.
+
+PostgreSQL listens on `127.0.0.1:5433` by default; override with `POSTGRES_PORT`.
+
+```sh
+docker compose up -d postgres
+make migrate-up
+make sqlc-up
+(cd web && npm install)
+make test
+make test-integration   # uses a separate hooklane_test database
+make dev-api
+make dev-worker
+```
+
+In another terminal:
+
+```sh
+make dev-web
+```
+
+The dev server proxies `/v1`, `/healthz` and `/readyz` to `http://127.0.0.1:8080`; set `HOOKLANE_API_URL` when the API runs elsewhere (for example `HOOKLANE_API_URL=http://127.0.0.1:18080 make dev-web`).
+
+Bootstrap the first organization, project, and API key:
+
+```sh
+export DATABASE_URL=postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane?sslmode=disable
+cd api && go run ./cmd/admin bootstrap -org-name Acme -org-slug acme -project-name default
+```
+
+The CLI prints the raw API key once. Use it as `Authorization: Bearer <key>` against `/v1`.
+
+## Repository layout
+
+```
+api/                                Go module (github.com/0furkancolak/hooklane/api)
+  cmd/api                           HTTP API process
+  cmd/worker                        Delivery worker process
+  cmd/admin                         Administrator CLI
+  internal/config                   Environment loading
+  internal/domain                   Domain types
+  internal/application              Use cases, worker, repository interfaces
+  internal/infrastructure/database  PostgreSQL repositories and sqlc output (db/)
+  internal/infrastructure/webhook   Webhook signing and outbound HTTP
+  internal/infrastructure/metrics   Prometheus metrics and the ops listener
+  internal/transport/http           Fiber HTTP API
+  migrations/                       Goose SQL migrations (embedded in the admin CLI)
+  openapi/                          OpenAPI 3.1 description, served at /openapi.yaml
+  queries/                          sqlc queries
+web/                                React + TypeScript + Vite dashboard
+  src/app                           Shell, layout and routing
+  src/features                      One folder per area: auth, projects, endpoints, events, deliveries
+  src/shared                        API client, session, router, UI primitives
+examples/                           Webhook receivers that verify signatures (Go, Node.js)
+docs/                               Deployment, release, architecture and phase plans
+```
+
+Go commands run inside `api/`; npm commands run inside `web/`. The Makefile wraps both.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Hooklane is released under the
+[MIT License](LICENSE). Changes are listed in [CHANGELOG.md](CHANGELOG.md).

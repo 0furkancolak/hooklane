@@ -25,6 +25,11 @@ type Querier interface {
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error)
+	// Deletes up to batch_size events older than the retention period whose
+	// deliveries are all finished; deliveries and attempts cascade. Events with
+	// pending or processing deliveries are kept until those finish. SKIP LOCKED
+	// lets several workers prune at once without blocking each other.
+	DeleteExpiredEvents(ctx context.Context, arg DeleteExpiredEventsParams) (int64, error)
 	// oldest_due_at ignores disabled endpoints: workers do not claim their
 	// deliveries, so they are held rather than late.
 	DeliveryStatsByProject(ctx context.Context, projectID pgtype.UUID) (DeliveryStatsByProjectRow, error)

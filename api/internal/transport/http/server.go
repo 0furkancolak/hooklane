@@ -59,6 +59,8 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 		return c.JSON(fiber.Map{"status": "ready"})
 	})
 
+	app.Get("/openapi.yaml", serveOpenAPI)
+
 	projects := projectHandler{projects: svc.Projects}
 	endpoints := endpointHandler{endpoints: svc.Endpoints}
 	events := eventHandler{events: svc.Events}
@@ -91,6 +93,10 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	v1.Get("/deliveries/:id", auth, deliveries.get)
 	v1.Get("/deliveries/:id/attempts", auth, deliveries.listAttempts)
 	v1.Post("/deliveries/:id/replay", auth, deliveries.replay)
+
+	if o.dashboardDir != "" {
+		mountDashboard(app, o.dashboardDir)
+	}
 
 	return &Server{app: app, port: cfg.Port}
 }

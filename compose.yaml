@@ -1,3 +1,7 @@
+# Development: `docker compose up -d postgres` starts only the database.
+# Full stack:  `docker compose --profile app up -d --build` also runs
+# migrations, the API (with the dashboard) and a worker. It needs
+# ENDPOINT_SECRET_KEY in .env (see .env.example).
 services:
   postgres:
     image: postgres:17-alpine
@@ -15,5 +19,44 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  migrate:
+    profiles: ["app"]
+    build: .
+    image: hooklane:local
+    command: ["hooklane-admin", "migrate", "up"]
+    environment: &app-env
+      APP_ENV: ${HOOKLANE_APP_ENV:-production}
+      DATABASE_URL: postgres://hooklane:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/hooklane?sslmode=disable
+      ENDPOINT_SECRET_KEY: ${ENDPOINT_SECRET_KEY:-}
+      RETENTION_PERIOD: ${RETENTION_PERIOD:-720h}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    profiles: ["app"]
+    image: hooklane:local
+    restart: unless-stopped
+    command: ["hooklane-api"]
+    environment: *app-env
+    ports:
+      - "127.0.0.1:${HOOKLANE_PORT:-8090}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    profiles: ["app"]
+    image: hooklane:local
+    restart: unless-stopped
+    command: ["hooklane-worker"]
+    environment:
+      <<: *app-env
+      METRICS_ADDR: 0.0.0.0:9101
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   hooklane_postgres:

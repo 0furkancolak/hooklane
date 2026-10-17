@@ -60,6 +60,7 @@ type Worker struct {
 	duration     *prometheus.HistogramVec
 	leaseLost    prometheus.Counter
 	recordErrors prometheus.Counter
+	pruned       prometheus.Counter
 }
 
 func NewWorker(reg prometheus.Registerer) *Worker {
@@ -93,8 +94,12 @@ func NewWorker(reg prometheus.Registerer) *Worker {
 			Namespace: namespace, Name: "worker_record_errors_total",
 			Help: "Attempts that could not be recorded.",
 		}),
+		pruned: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace, Name: "retention_deleted_events_total",
+			Help: "Events deleted by retention, with their deliveries and attempts.",
+		}),
 	}
-	reg.MustRegister(m.claimed, m.claimErrors, m.inFlight, m.attempts, m.duration, m.leaseLost, m.recordErrors)
+	reg.MustRegister(m.claimed, m.claimErrors, m.inFlight, m.attempts, m.duration, m.leaseLost, m.recordErrors, m.pruned)
 	return m
 }
 
@@ -103,6 +108,9 @@ func (m *Worker) ClaimFailed()       { m.claimErrors.Inc() }
 func (m *Worker) InFlight(delta int) { m.inFlight.Add(float64(delta)) }
 func (m *Worker) LeaseLost()         { m.leaseLost.Inc() }
 func (m *Worker) RecordFailed()      { m.recordErrors.Inc() }
+
+// EventsPruned counts events removed by retention.
+func (m *Worker) EventsPruned(n int64) { m.pruned.Add(float64(n)) }
 
 // AttemptRecorded labels a pending result as "retry_scheduled": after an
 // attempt, a pending delivery is always waiting for its next try.

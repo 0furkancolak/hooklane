@@ -17,6 +17,9 @@ import (
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/webhook"
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -85,7 +88,16 @@ func main() {
 		logger.Info("ops listener started", "addr", cfg.MetricsAddr)
 	}
 
-	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String(), "allow_private_networks", cfg.AllowPrivateNetworks())
+	if cfg.RetentionPeriod > 0 {
+		retention, err := application.NewRetention(store, cfg.RetentionPeriod, logger)
+		if err != nil {
+			log.Fatal(err)
+		}
+		retention.Deleted = observer.EventsPruned
+		go retention.Run(ctx, time.Hour)
+	}
+
+	logger.Info("worker started", "version", version, "retention", cfg.RetentionPeriod.String(), "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String(), "allow_private_networks", cfg.AllowPrivateNetworks())
 	if err := worker.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
