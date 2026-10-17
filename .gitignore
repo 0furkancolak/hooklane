@@ -8,3 +8,6 @@ coverage.out
 node_modules/
 .gocache/
 .gotmp/
+
+# Local Claude Code preview config
+.claude/

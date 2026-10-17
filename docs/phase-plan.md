@@ -213,7 +213,7 @@
 - [x] Phase 5 complete and verified
 - [x] Phase 6 complete and verified
 - [x] Phase 7 complete and verified
-- [ ] Phase 8 complete and verified
+- [x] Phase 8 complete and verified
 - [ ] Phase 9 complete and verified
 
 ## Phase 2 Verification Notes (2026-10-17)
@@ -459,6 +459,59 @@ Acceptance evidence:
   are not served on the public port (`404`); neither log contained the API key.
   The run also exposed that pending deliveries of a disabled endpoint inflated
   `oldest_due_seconds`; they are now counted as held
+
+## Phase 8 Verification Notes (2026-10-17)
+
+Dashboard (`web/`):
+- Feature folders (`auth`, `projects`, `endpoints`, `events`, `deliveries`) on
+  shared primitives: a typed API client, a hash router (static hosting, no
+  server rewrites), an abortable `useAsync` hook, and loading, error and empty
+  states with retry
+- Sign-in with an API key, which is checked locally against the key format
+  and then with one API call; kept in `sessionStorage` and cleared on
+  sign-out or any `401`
+- Views: projects, overview stats, endpoint management (create with secret
+  shown once, edit URL, enable or disable, reveal secret), events with type
+  filter and detail (payload and deliveries), deliveries with status and
+  endpoint filters in the URL, delivery detail with attempt history and replay
+  with confirmation
+- No new runtime dependencies (React only); Vitest, Testing Library and jsdom
+  are dev dependencies; CI runs `npm test`
+
+Resilience (backend):
+- Worker keeps polling through claim failures (simulated database outage) and
+  delivers once the queue recovers
+- Three concurrent workers over 60 deliveries send each event exactly once
+- A claim abandoned by a crashed worker is not taken over while its lease is
+  valid and is delivered by another worker after it expires (two claims, one
+  request)
+
+Acceptance evidence:
+- Documented API only: the client calls only routes listed in the README;
+  tests assert paths, query strings and the bearer header
+- Tenant scoping: the dashboard has no tenant selector; every view is limited
+  to the key's organization by the API, and `403` responses render as "this
+  key's organization does not own that resource" (tested)
+- Understandable history: status badges, HTTP status colouring, "no response"
+  for transport errors, attempt error and response excerpt (tested)
+- Replay authorization: replay requires an authenticated key whose
+  organization owns the delivery (API-enforced, cross-tenant test); the UI
+  offers it only for terminal deliveries, requires confirmation, and shows
+  `409` conflicts (tested)
+- Checks: 31 component and unit tests, `oxlint`, `tsc -b` and `vite build`
+  pass; backend tests pass with `-race`; resilience tests stable over 3 runs
+- Browser run against the development API and worker: signed in with a
+  temporary key, followed overview to dead-letter list to delivery detail,
+  replayed a dead-lettered delivery after bringing its receiver back (the new
+  delivery shows `replay of` and succeeded with `200`), saw the destination
+  error for `169.254.169.254`, checked a 375px viewport (no horizontal page
+  scroll), then revoked the key and saw the dashboard return to sign-in with
+  storage cleared. The key never appeared in API or worker logs
+
+Known limits:
+- API keys have no scopes, so any key of an organization can replay
+- The dashboard is served by Vite in development; production serving is
+  part of Phase 9
 
 ## Migration Naming Convention
 
