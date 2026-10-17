@@ -26,9 +26,10 @@ type ReadyFunc func(ctx context.Context) error
 type Option func(*options)
 
 type options struct {
-	logger   *slog.Logger
-	observer RequestObserver
-	ready    ReadyFunc
+	logger       *slog.Logger
+	observer     RequestObserver
+	ready        ReadyFunc
+	dashboardDir string
 }
 
 func WithLogger(logger *slog.Logger) Option { return func(o *options) { o.logger = logger } }

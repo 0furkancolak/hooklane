@@ -37,7 +37,8 @@ jobs:
           cache-dependency-path: api/go.sum
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres "$HOOKLANE_TEST_DATABASE_URL" up
+      # Applies the embedded migrations the same way production does.
+      - run: DATABASE_URL="$HOOKLANE_TEST_DATABASE_URL" go run ./cmd/admin migrate up
       - run: go test -race ./...
       - run: go build ./cmd/...
 
@@ -57,3 +58,24 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/receiver-go/go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: cd examples/receiver-go && go vet ./... && go test ./...
+      - run: node --test examples/receiver-node/
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg VERSION=ci -t hooklane:ci .
+      - run: docker run --rm hooklane:ci hooklane-admin version

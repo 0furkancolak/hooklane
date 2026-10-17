@@ -214,7 +214,7 @@
 - [x] Phase 6 complete and verified
 - [x] Phase 7 complete and verified
 - [x] Phase 8 complete and verified
-- [ ] Phase 9 complete and verified
+- [x] Phase 9 complete and verified
 
 ## Phase 2 Verification Notes (2026-10-17)
 
@@ -512,6 +512,53 @@ Known limits:
 - API keys have no scopes, so any key of an organization can replay
 - The dashboard is served by Vite in development; production serving is
   part of Phase 9
+
+## Phase 9 Verification Notes (2026-10-17)
+
+Added:
+- README rewritten around a Docker quick start, receiving and verifying
+  webhooks, delivery guarantees, retention, API, dashboard, operations and
+  security; [deployment.md](deployment.md) documents every environment
+  variable with defaults and ranges, upgrades, sizing and a security checklist
+- OpenAPI 3.1 description (`api/openapi/openapi.yaml`), embedded and served at
+  `/openapi.yaml`; tests parse it, resolve every `$ref` and require it to
+  match the registered routes exactly
+- Example receivers in Go and Node.js without dependencies, tested against the
+  Standard Webhooks test vector and run in CI
+- Retention (`RETENTION_PERIOD`, default 30 days): the worker deletes finished
+  events hourly in batches; events with pending or in-flight deliveries are
+  kept; `hooklane-admin prune` prunes on demand; migration
+  20261017170000 adds `events_created_idx`
+- `hooklane-admin migrate up|status` with embedded migrations (CI now migrates
+  with it) and `hooklane-admin version`
+- One container image (`Dockerfile` at the root) with all three binaries and
+  the dashboard; the API serves the dashboard from `WEB_DIR` with a strict
+  CSP; Compose `app` profile runs migrate, API and worker
+- MIT license, CONTRIBUTING, SECURITY, CHANGELOG (0.1.0), release workflow
+  (binaries, dashboard archive, multi-arch GHCR image, GitHub release from the
+  CHANGELOG section) and [release.md](release.md) with the checklist
+- Project and API key names are capped at 200 characters
+
+Acceptance evidence:
+- A new developer can run it: from a fresh clone in an empty directory, the
+  Quick start commands brought up postgres, applied all six migrations,
+  started the API and worker (`/readyz` ready, dashboard served with CSP),
+  bootstrapped a key, and delivered an event to the Node example receiver
+  (`succeeded`, `204`); a replay to a receiver with the wrong secret got
+  `401` and was dead-lettered
+- Reproducible setup: migrations run from the embedded set in CI, in the
+  image and in the clean install; bootstrap is a single command
+- CI: api (including the openapi tests), web, examples and image jobs
+- Security limitations and operational requirements: README Security and
+  Operations sections, deployment checklist, SECURITY.md
+- Release checklist: docs/release.md. The release workflow has not run yet;
+  it runs on the first `v*` tag
+
+Decisions to revisit:
+- License: MIT was chosen as a common permissive default; change `LICENSE`,
+  `openapi.yaml` and CONTRIBUTING if another license is preferred
+- The check stack's volume `hooklane-check_hooklane_postgres` was left in
+  place; remove it with `docker volume rm hooklane-check_hooklane_postgres`
 
 ## Migration Naming Convention
 

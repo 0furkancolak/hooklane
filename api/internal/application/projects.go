@@ -19,9 +19,12 @@ func NewProjectService(projects ProjectRepository, keys APIKeyRepository) *Proje
 	return &ProjectService{projects: projects, keys: keys}
 }
 
+// maxNameLength bounds project and API key names.
+const maxNameLength = 200
+
 func (s *ProjectService) Create(ctx context.Context, principal Principal, name string) (domain.Project, error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
+	if name == "" || len(name) > maxNameLength {
 		return domain.Project{}, ErrInvalidInput
 	}
 	return s.projects.Create(ctx, domain.Project{
@@ -57,7 +60,7 @@ func ownedProject(ctx context.Context, projects ProjectRepository, principal Pri
 
 func (s *ProjectService) CreateAPIKey(ctx context.Context, principal Principal, projectID uuid.UUID, name string) (domain.APIKey, string, error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
+	if name == "" || len(name) > maxNameLength {
 		return domain.APIKey{}, "", ErrInvalidInput
 	}
 	project, err := s.Get(ctx, principal, projectID)

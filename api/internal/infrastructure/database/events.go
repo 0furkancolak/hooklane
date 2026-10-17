@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/0furkancolak/hooklane/api/internal/application"
+	"time"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database/db"
@@ -104,6 +105,14 @@ func (s *Store) CreateDeliveriesForEvent(ctx context.Context, eventID, projectID
 
 func (s *Store) CountDeliveriesByEvent(ctx context.Context, eventID uuid.UUID) (int64, error) {
 	return s.q(ctx).CountDeliveriesByEvent(ctx, uuidToPg(eventID))
+}
+
+// DeleteExpiredEvents implements application.EventPruner.
+func (s *Store) DeleteExpiredEvents(ctx context.Context, retention time.Duration, batch int32) (int64, error) {
+	return s.q(ctx).DeleteExpiredEvents(ctx, db.DeleteExpiredEventsParams{
+		RetentionSeconds: retention.Seconds(),
+		BatchSize:        batch,
+	})
 }
 
 func mapEvent(row db.Event) domain.Event {

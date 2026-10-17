@@ -17,6 +17,9 @@ import (
 	httpserver "github.com/0furkancolak/hooklane/api/internal/transport/http"
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -65,6 +68,7 @@ func main() {
 		httpserver.WithLogger(logger),
 		httpserver.WithRequestObserver(metrics.NewHTTP(registry)),
 		httpserver.WithReadiness(ready),
+		httpserver.WithDashboard(cfg.WebDir),
 	)
 
 	var ops *metrics.OpsServer
@@ -76,7 +80,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "port", cfg.Port, "env", string(cfg.AppEnv))
+		logger.Info("api listening", "port", cfg.Port, "env", string(cfg.AppEnv), "version", version)
 		errCh <- server.Listen()
 	}()
 

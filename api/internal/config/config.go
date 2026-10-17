@@ -28,6 +28,11 @@ type Config struct {
 	// MetricsAddr, when set, serves /metrics, /healthz and /readyz on a
 	// separate listener (for example 127.0.0.1:9101). Empty disables it.
 	MetricsAddr string
+	// WebDir, when set, is a built dashboard (web/dist) the API serves at "/".
+	WebDir string
+	// RetentionPeriod is how long finished events are kept. Zero disables
+	// automatic deletion.
+	RetentionPeriod time.Duration
 
 	Worker WorkerConfig
 }
@@ -64,6 +69,7 @@ func Load() (Config, error) {
 		Port:        getenv("PORT", "8080"),
 		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		MetricsAddr: strings.TrimSpace(os.Getenv("METRICS_ADDR")),
+		WebDir:      strings.TrimSpace(os.Getenv("WEB_DIR")),
 	}
 
 	switch cfg.AppEnv {
@@ -86,6 +92,12 @@ func Load() (Config, error) {
 		}
 		cfg.EndpointSecretKey = key
 	}
+
+	retention, err := time.ParseDuration(getenv("RETENTION_PERIOD", "720h"))
+	if err != nil || (retention != 0 && retention < time.Hour) {
+		return Config{}, fmt.Errorf("RETENTION_PERIOD must be a duration of at least 1h, or 0 to disable")
+	}
+	cfg.RetentionPeriod = retention
 
 	worker, err := loadWorker()
 	if err != nil {

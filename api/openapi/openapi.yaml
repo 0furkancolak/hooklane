@@ -1,0 +1,563 @@
+openapi: 3.1.0
+info:
+  title: Hooklane Management API
+  version: "1.0"
+  summary: Self-hosted webhook delivery.
+  description: |
+    Every `/v1` route requires `Authorization: Bearer <api key>`. Access is
+    limited to the key's organization: resources owned by another organization
+    return `403`.
+
+    List routes are newest first and paginated with `limit` (1–100, default
+    50) and `offset`. `next_offset` is `null` on the last page.
+
+    Every response carries `X-Request-ID`. Errors use the envelope
+    `{"error": {"code", "message"}}`.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /
+security:
+  - apiKey: []
+tags:
+  - name: Projects
+  - name: API keys
+  - name: Endpoints
+  - name: Events
+  - name: Deliveries
+  - name: Health
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness; never checks dependencies
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness; pings the database
+      security: []
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "503": { $ref: "#/components/responses/Status" }
+  /openapi.yaml:
+    get:
+      tags: [Health]
+      summary: This document
+      security: []
+      responses:
+        "200":
+          description: OpenAPI document
+          content:
+            application/yaml: {}
+
+  /v1/projects:
+    post:
+      tags: [Projects]
+      summary: Create a project in the key's organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [Projects]
+      summary: List the organization's projects
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Offset" }]
+      responses:
+        "200":
+          description: A page of projects
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageInfo"
+                  - type: object
+                    required: [projects]
+                    properties:
+                      projects: { type: array, items: { $ref: "#/components/schemas/Project" } }
+        "401": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Projects]
+      summary: Read a project
+      responses:
+        "200": { description: Project, content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/projects/{id}/api-keys:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [API keys]
+      summary: Create an API key; the raw key is returned once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/APIKey"
+                  - type: object
+                    required: [raw_key]
+                    properties:
+                      raw_key: { type: string, description: "Shown only in this response", examples: ["hlk_<64 hex characters>"] }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [API keys]
+      summary: List a project's API keys (never includes raw keys or hashes)
+      responses:
+        "200":
+          description: Keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [api_keys]
+                properties:
+                  api_keys: { type: array, items: { $ref: "#/components/schemas/APIKey" } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/api-keys/{id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [API keys]
+      summary: Revoke an API key
+      responses:
+        "200": { description: Revoked key, content: { application/json: { schema: { $ref: "#/components/schemas/APIKey" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /v1/projects/{id}/endpoints:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Endpoints]
+      summary: Register an endpoint; the signing secret is returned
+      description: |
+        URLs must use `https` (`http` only when `APP_ENV=development`).
+        Literal private, loopback, link-local and reserved addresses and
+        `localhost` names are rejected with `destination_not_allowed`; resolved
+        addresses are checked again on every delivery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri, maxLength: 2048 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Endpoint"
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret: { type: string, examples: ["whsec_..."] }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [Endpoints]
+      summary: List endpoints
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { name: enabled, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: A page of endpoints
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageInfo"
+                  - type: object
+                    required: [endpoints]
+                    properties:
+                      endpoints: { type: array, items: { $ref: "#/components/schemas/Endpoint" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/endpoints/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Endpoints]
+      summary: Read an endpoint
+      responses:
+        "200": { description: Endpoint, content: { application/json: { schema: { $ref: "#/components/schemas/Endpoint" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Endpoints]
+      summary: Change the URL or enable/disable an endpoint
+      description: Disabled endpoints get no new deliveries; queued ones wait until re-enabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                url: { type: string, format: uri }
+                enabled: { type: boolean }
+      responses:
+        "200": { description: Updated endpoint, content: { application/json: { schema: { $ref: "#/components/schemas/Endpoint" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/endpoints/{id}/secret:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Endpoints]
+      summary: Retrieve the signing secret
+      responses:
+        "200":
+          description: Secret (sent with Cache-Control no-store)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret]
+                properties:
+                  secret: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /v1/projects/{id}/events:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Events]
+      summary: Accept an event and queue one delivery per enabled endpoint
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: Printable ASCII, up to 255 characters, scoped to the project. A repeat with the same type and payload returns the original event with `200` and `Idempotent-Replayed true`; a different type or payload returns `409 idempotency_conflict`.
+          schema: { type: string, maxLength: 255 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type, payload]
+              properties:
+                event_type: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" }
+                payload: { type: object, description: "Any JSON object, up to 256 KiB" }
+      responses:
+        "202": { $ref: "#/components/responses/Ingested" }
+        "200": { $ref: "#/components/responses/Ingested" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [Events]
+      summary: List events
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { name: event_type, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of events
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageInfo"
+                  - type: object
+                    required: [events]
+                    properties:
+                      events: { type: array, items: { $ref: "#/components/schemas/Event" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/events/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Events]
+      summary: Read an event
+      responses:
+        "200": { description: Event, content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/events/{id}/deliveries:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Deliveries]
+      summary: List an event's deliveries, including replays
+      responses:
+        "200":
+          description: Deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveries]
+                properties:
+                  deliveries: { type: array, items: { $ref: "#/components/schemas/Delivery" } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/projects/{id}/deliveries:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Deliveries]
+      summary: List a project's deliveries
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/DeliveryStatus" } }
+        - { name: endpoint_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: A page of deliveries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageInfo"
+                  - type: object
+                    required: [deliveries]
+                    properties:
+                      deliveries: { type: array, items: { $ref: "#/components/schemas/Delivery" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/projects/{id}/delivery-stats:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Deliveries]
+      summary: Delivery counts by status
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pending, processing, succeeded, dead_letter, oldest_due_at]
+                properties:
+                  pending: { type: integer }
+                  processing: { type: integer }
+                  succeeded: { type: integer }
+                  dead_letter: { type: integer }
+                  oldest_due_at:
+                    type: [string, "null"]
+                    format: date-time
+                    description: Earliest due time among pending deliveries of enabled endpoints that are already due
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/deliveries/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Deliveries]
+      summary: Read a delivery
+      responses:
+        "200": { description: Delivery, content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/deliveries/{id}/attempts:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Deliveries]
+      summary: Attempt history, oldest first
+      responses:
+        "200":
+          description: Attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attempts]
+                properties:
+                  attempts: { type: array, items: { $ref: "#/components/schemas/Attempt" } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /v1/deliveries/{id}/replay:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Deliveries]
+      summary: Queue a new delivery of a finished delivery
+      description: Only `succeeded` or `dead_letter` deliveries can be replayed, and only one replay per delivery may be unfinished. The original delivery and its attempts are not changed.
+      responses:
+        "201": { description: The new pending delivery, content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: A Hooklane API key (`hlk_` followed by 64 hex characters).
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Status:
+      description: Status
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, enum: [ok, ready, unavailable] }
+    Ingested:
+      description: "`202` for a new event, `200` (with `Idempotent-Replayed: true`) for a repeat"
+      headers:
+        Idempotent-Replayed: { schema: { type: string, enum: ["true"] } }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Event"
+              - type: object
+                required: [delivery_count]
+                properties:
+                  delivery_count: { type: integer }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [invalid_input, unauthorized, revoked, forbidden, not_found, already_revoked, idempotency_conflict, delivery_not_finished, replay_in_progress, destination_not_allowed, payload_too_large, internal_error]
+            message: { type: string }
+    PageInfo:
+      type: object
+      required: [limit, offset, next_offset]
+      properties:
+        limit: { type: integer }
+        offset: { type: integer }
+        next_offset: { type: [integer, "null"] }
+    Project:
+      type: object
+      required: [id, organization_id, name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+    APIKey:
+      type: object
+      required: [id, project_id, name, prefix, revoked, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string }
+        revoked: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Endpoint:
+      type: object
+      required: [id, project_id, url, enabled, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Event:
+      type: object
+      required: [id, project_id, event_type, payload, idempotency_key, created_at]
+      properties:
+        id: { type: string, format: uuid, description: "Also sent as the webhook-id header" }
+        project_id: { type: string, format: uuid }
+        event_type: { type: string }
+        payload: { type: object }
+        idempotency_key: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+    DeliveryStatus:
+      type: string
+      enum: [pending, processing, succeeded, dead_letter]
+    Delivery:
+      type: object
+      required: [id, event_id, endpoint_id, status, attempt_count, next_attempt_at, last_response_status, last_error, replay_of, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        endpoint_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/DeliveryStatus" }
+        attempt_count: { type: integer }
+        next_attempt_at: { type: [string, "null"], format: date-time, description: "Set only while pending" }
+        last_response_status: { type: [integer, "null"] }
+        last_error: { type: [string, "null"] }
+        replay_of: { type: [string, "null"], format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Attempt:
+      type: object
+      required: [id, attempt_number, status_code, response_body, error, duration_ms, attempted_at]
+      properties:
+        id: { type: string, format: uuid }
+        attempt_number: { type: integer, minimum: 1 }
+        status_code: { type: [integer, "null"], description: "null for transport failures" }
+        response_body: { type: [string, "null"], description: "First 4 KiB of the response" }
+        error: { type: [string, "null"] }
+        duration_ms: { type: [integer, "null"] }
+        attempted_at: { type: string, format: date-time }

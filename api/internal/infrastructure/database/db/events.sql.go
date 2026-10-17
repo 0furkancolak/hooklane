@@ -11,6 +11,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteExpiredEvents = `-- name: DeleteExpiredEvents :execrows
+DELETE FROM events
+WHERE id IN (
+    SELECT e.id
+    FROM events e
+    WHERE e.created_at < now() - make_interval(secs => $1::float8)
+      AND NOT EXISTS (
+          SELECT 1 FROM deliveries d
+          WHERE d.event_id = e.id AND d.status IN ('pending', 'processing')
+      )
+    ORDER BY e.created_at
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+)
+`
+
+type DeleteExpiredEventsParams struct {
+	RetentionSeconds float64
+	BatchSize        int32
+}
+
+// Deletes up to batch_size events older than the retention period whose
+// deliveries are all finished; deliveries and attempts cascade. Events with
+// pending or processing deliveries are kept until those finish. SKIP LOCKED
+// lets several workers prune at once without blocking each other.
+func (q *Queries) DeleteExpiredEvents(ctx context.Context, arg DeleteExpiredEventsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredEvents, arg.RetentionSeconds, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getEvent = `-- name: GetEvent :one
 SELECT ev.id, ev.project_id, p.organization_id, ev.event_type, ev.payload,
        ev.idempotency_key, ev.created_at
