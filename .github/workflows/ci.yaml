@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: 24
       - run: cd examples/receiver-go && go vet ./... && go test ./...
-      - run: node --test examples/receiver-node/
+      - run: node --test examples/receiver-node/verify.test.mjs
 
   image:
     runs-on: ubuntu-latest
