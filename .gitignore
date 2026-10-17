@@ -11,3 +11,6 @@ node_modules/
 
 # Local Claude Code preview config
 .claude/
+
+# make dev: built binaries and the generated development API key
+.dev/

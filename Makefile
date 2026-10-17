@@ -1,4 +1,4 @@
-.PHONY: test test-integration test-db build sqlc-up db-up db-down migrate-up migrate-status dev-api dev-worker dev-web bootstrap
+.PHONY: dev test test-integration test-db build sqlc-up db-up db-down migrate-up migrate-status dev-api dev-worker dev-web bootstrap
 
 DATABASE_URL ?= postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane?sslmode=disable
 TEST_DATABASE_URL ?= postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane_test?sslmode=disable
@@ -37,6 +37,10 @@ migrate-up:
 
 migrate-status:
 	$(GOOSE) "$(DATABASE_URL)" status
+
+# Starts PostgreSQL, migrations, the API, the worker and the dashboard.
+dev:
+	./scripts/dev.sh
 
 dev-api:
 	cd api && go run ./cmd/api

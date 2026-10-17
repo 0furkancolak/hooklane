@@ -7,6 +7,10 @@ include breaking changes, which are called out.
 
 ## [Unreleased]
 
+### Added
+
+- `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.
+
 ## [0.1.0] - 2026-10-17
 
 First public release.
