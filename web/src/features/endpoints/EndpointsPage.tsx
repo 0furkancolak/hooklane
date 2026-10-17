@@ -8,6 +8,7 @@ import { describeError } from "../../shared/errors";
 import { Empty, ErrorState, Loading } from "../../shared/ui/States";
 import { EnabledBadge } from "../../shared/ui/StatusBadge";
 import { Pager } from "../../shared/ui/Pager";
+import { CopyButton } from "../../shared/ui/CopyButton";
 
 const pageSize = 25;
 
@@ -196,24 +197,6 @@ function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; en
         </div>
       )}
     </li>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
   );
 }
 

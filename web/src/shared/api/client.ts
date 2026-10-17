@@ -1,5 +1,7 @@
 import type {
+  APIKey,
   Attempt,
+  CreatedAPIKey,
   CreatedEndpoint,
   Delivery,
   DeliveryStats,
@@ -49,6 +51,18 @@ export class ApiClient {
 
   getProject(id: string, signal?: AbortSignal) {
     return this.get<Project>(`/v1/projects/${seg(id)}`, signal);
+  }
+
+  listAPIKeys(projectId: string, signal?: AbortSignal) {
+    return this.get<{ api_keys: APIKey[] }>(`/v1/projects/${seg(projectId)}/api-keys`, signal);
+  }
+
+  createAPIKey(projectId: string, name: string) {
+    return this.send<CreatedAPIKey>("POST", `/v1/projects/${seg(projectId)}/api-keys`, { name });
+  }
+
+  revokeAPIKey(id: string) {
+    return this.send<APIKey>("POST", `/v1/api-keys/${seg(id)}/revoke`);
   }
 
   listEndpoints(projectId: string, params: PageParams & { enabled?: boolean } = {}, signal?: AbortSignal) {

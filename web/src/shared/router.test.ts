@@ -7,10 +7,12 @@ describe("parseRoute", () => {
     ["#/projects", { name: "projects" }],
     ["#/projects/p1", { name: "overview", projectId: "p1" }],
     ["#/projects/p1/endpoints", { name: "endpoints", projectId: "p1" }],
+    ["#/projects/p1/api-keys", { name: "api_keys", projectId: "p1" }],
     ["#/projects/p1/events", { name: "events", projectId: "p1" }],
     ["#/projects/p1/events/e1", { name: "event", projectId: "p1", eventId: "e1" }],
     ["#/projects/p1/deliveries/d1", { name: "delivery", projectId: "p1", deliveryId: "d1" }],
     ["#/projects/p1/endpoints/x", { name: "not_found" }],
+    ["#/projects/p1/api-keys/x", { name: "not_found" }],
     ["#/projects/p1/events/e1/extra", { name: "not_found" }],
     ["#/nope", { name: "not_found" }],
   ])("%s", (hash, expected) => {

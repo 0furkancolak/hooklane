@@ -184,6 +184,7 @@ The dashboard signs in with an API key and only calls the documented `/v1` API, 
 - **Endpoints**: add an endpoint (the signing secret is shown once, with a copy button), edit its URL, enable or disable it, and reveal the secret on request. Blocked destinations are explained.
 - **Events**: filter by type, then open an event to see its payload and every delivery, including replays.
 - **Deliveries**: filter by status or endpoint (filters live in the URL, so views can be shared), page through history, and open a delivery to see each attempt's status code, response excerpt, error and duration.
+- **API keys**: generate a key for a project (the full key is shown once, with a copy button), see each key's prefix and status, and revoke it after confirmation. Revoking the key you signed in with signs you out.
 - **Replay**: available only for succeeded or dead-lettered deliveries, asks for confirmation, and opens the new delivery. A `409` (for example, a replay already in progress) is shown inline.
 
 The key is kept in the tab's `sessionStorage`. It is dropped when the tab closes, on sign-out, or as soon as the API answers `401` (for example, after the key is revoked). It is never put in `localStorage`, cookies or URLs. Any script running on the dashboard's origin could read it, so serve the dashboard only from an origin you control. API keys have no per-action scopes yet: any key of an organization can replay that organization's deliveries.
