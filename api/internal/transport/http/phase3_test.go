@@ -53,7 +53,7 @@ func newTestEnv(t *testing.T, env config.AppEnv) testEnv {
 	server := NewServer(cfg, Services{
 		Auth:       application.NewAuthenticator(store.Keys()),
 		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
-		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, cfg.AllowInsecureHTTP()),
+		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: cfg.AllowInsecureHTTP(), Destinations: application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()}}),
 		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
 		Deliveries: application.NewDeliveryService(store.Events(), store.Deliveries()),
 	})

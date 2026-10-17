@@ -49,6 +49,12 @@ func (c Config) AllowInsecureHTTP() bool {
 	return c.AppEnv == AppEnvDevelopment
 }
 
+// AllowPrivateNetworks lets webhooks reach loopback and private addresses so
+// local receivers work. Never enabled outside development.
+func (c Config) AllowPrivateNetworks() bool {
+	return c.AppEnv == AppEnvDevelopment
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:      AppEnv(getenv("APP_ENV", string(AppEnvDevelopment))),

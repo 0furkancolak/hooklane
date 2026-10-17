@@ -35,7 +35,7 @@ func newFixture(t *testing.T, allowHTTP bool) fixture {
 	}
 	return fixture{
 		store:     store,
-		endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), box, allowHTTP),
+		endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: allowHTTP, Destinations: application.DestinationPolicy{AllowPrivateNetworks: allowHTTP}}),
 		events:    application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
 		principal: application.Principal{OrganizationID: orgID, ProjectID: project.ID},
 		project:   project,

@@ -49,6 +49,8 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusConflict, "delivery_not_finished", "only succeeded or dead-lettered deliveries can be replayed"
 	case errors.Is(err, application.ErrReplayInProgress):
 		return http.StatusConflict, "replay_in_progress", "an earlier replay of this delivery has not finished"
+	case errors.Is(err, application.ErrDestinationNotAllowed):
+		return http.StatusBadRequest, "destination_not_allowed", "endpoint URL points to an address that is not allowed"
 	case errors.Is(err, application.ErrPayloadTooLarge):
 		return http.StatusRequestEntityTooLarge, "payload_too_large", "payload too large"
 	default:

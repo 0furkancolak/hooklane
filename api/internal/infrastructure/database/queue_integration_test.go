@@ -234,7 +234,7 @@ func TestIntegrationWorkerDeliversSignedWebhooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoints := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, true)
+	endpoints := application.NewEndpointService(tn.store.Projects(), tn.store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: true, Destinations: application.DestinationPolicy{AllowPrivateNetworks: true}})
 	ctx := context.Background()
 
 	var mu sync.Mutex
@@ -264,7 +264,7 @@ func TestIntegrationWorkerDeliversSignedWebhooks(t *testing.T) {
 	}
 	ids := tn.ingest(t, 3)
 
-	worker, err := application.NewDeliveryWorker(tn.store.Queue(), webhook.NewSender(webhook.SenderConfig{RequestTimeout: 5 * time.Second}), box,
+	worker, err := application.NewDeliveryWorker(tn.store.Queue(), webhook.NewSender(webhook.SenderConfig{RequestTimeout: 5 * time.Second, Destinations: application.DestinationPolicy{AllowPrivateNetworks: true}}), box,
 		application.WorkerConfig{Concurrency: 4, PollInterval: 20 * time.Millisecond, Lease: time.Minute, ShutdownTimeout: 5 * time.Second,
 			// One attempt so the failing endpoint reaches a final state here;
 			// retries are covered in retry_integration_test.go.

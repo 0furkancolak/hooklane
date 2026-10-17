@@ -3,13 +3,19 @@ package webhook
 import (
 	"bytes"
 	"context"
-	"github.com/0furkancolak/hooklane/api/internal/application"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/0furkancolak/hooklane/api/internal/application"
 )
 
 type SenderConfig struct {
@@ -18,6 +24,9 @@ type SenderConfig struct {
 	// MaxResponseBytes caps how much of the response body is read and kept.
 	MaxResponseBytes int64
 	UserAgent        string
+	// Destinations is checked against the resolved address of every
+	// connection, after DNS and immediately before connect.
+	Destinations application.DestinationPolicy
 }
 
 type Sender struct {
@@ -37,11 +46,22 @@ func NewSender(cfg SenderConfig) *Sender {
 		cfg.UserAgent = "Hooklane-Webhooks/1.0"
 	}
 	connectTimeout := min(5*time.Second, cfg.RequestTimeout)
+	dialer := &net.Dialer{
+		Timeout:   connectTimeout,
+		KeepAlive: 30 * time.Second,
+		// Control sees the exact address the socket is about to connect to,
+		// so the check cannot be bypassed by DNS rebinding (a second lookup
+		// returning a different address) or by a resolver that understands
+		// address forms the URL validation did not.
+		Control: func(network, address string, _ syscall.RawConn) error {
+			return checkDialAddress(cfg.Destinations, network, address)
+		},
+	}
 	transport := &http.Transport{
 		// Destinations are tenant-controlled; never route through an
 		// environment-configured proxy.
 		Proxy:                 nil,
-		DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           dialer.DialContext,
 		TLSHandshakeTimeout:   connectTimeout,
 		ResponseHeaderTimeout: cfg.RequestTimeout,
 		ExpectContinueTimeout: time.Second,
@@ -54,8 +74,9 @@ func NewSender(cfg SenderConfig) *Sender {
 		client: &http.Client{
 			Transport: transport,
 			Timeout:   cfg.RequestTimeout,
-			// Redirects are not followed: a 3xx counts as a failed attempt.
-			// Phase 6 decides whether validated redirects are allowed.
+			// Redirects are not followed: a 3xx is a non-retryable failure.
+			// Receivers must answer at the registered URL, and a redirect
+			// cannot steer the worker to another destination.
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -83,7 +104,7 @@ func (s *Sender) Send(ctx context.Context, req application.WebhookRequest) appli
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
-		return application.WebhookResult{Duration: time.Since(started), Err: err}
+		return application.WebhookResult{Duration: time.Since(started), Err: redactURLError(err)}
 	}
 	defer resp.Body.Close()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, s.cfg.MaxResponseBytes))
@@ -97,6 +118,41 @@ func (s *Sender) Send(ctx context.Context, req application.WebhookRequest) appli
 		result.Err = readErr
 	}
 	return result
+}
+
+func checkDialAddress(policy application.DestinationPolicy, network, address string) error {
+	if network != "tcp4" && network != "tcp6" {
+		return fmt.Errorf("%w: network %s", application.ErrDestinationNotAllowed, network)
+	}
+	addrPort, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return fmt.Errorf("%w: %v", application.ErrDestinationNotAllowed, err)
+	}
+	if !policy.AllowAddr(addrPort.Addr()) {
+		return fmt.Errorf("%w: %s", application.ErrDestinationNotAllowed, addrPort.Addr())
+	}
+	return nil
+}
+
+// redactURLError drops the query string from errors that quote the request
+// URL. Receivers sometimes put tokens there, and the error is stored with the
+// attempt.
+func redactURLError(err error) error {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err
+	}
+	redacted := *urlErr
+	if parsed, parseErr := url.Parse(urlErr.URL); parseErr == nil {
+		parsed.RawQuery = ""
+		parsed.ForceQuery = false
+		parsed.Fragment = ""
+		parsed.User = nil
+		redacted.URL = parsed.String()
+	} else {
+		redacted.URL = "[redacted]"
+	}
+	return &redacted
 }
 
 // parseRetryAfter accepts delay-seconds or an HTTP date and returns zero for

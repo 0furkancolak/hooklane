@@ -26,7 +26,8 @@ func NewAuthenticator(keys APIKeyRepository) *Authenticator {
 
 func (a *Authenticator) Authenticate(ctx context.Context, rawKey string) (Principal, error) {
 	rawKey = strings.TrimSpace(rawKey)
-	if rawKey == "" {
+	if !wellFormedAPIKey(rawKey) {
+		// Reject garbage before it costs a database lookup.
 		return Principal{}, ErrUnauthorized
 	}
 
@@ -48,6 +49,18 @@ func (a *Authenticator) Authenticate(ctx context.Context, rawKey string) (Princi
 		ProjectID:      key.ProjectID,
 		OrganizationID: key.OrganizationID,
 	}, nil
+}
+
+func wellFormedAPIKey(raw string) bool {
+	if len(raw) != len(apiKeyPrefix)+apiKeySecretHexLength || !strings.HasPrefix(raw, apiKeyPrefix) {
+		return false
+	}
+	for i := len(apiKeyPrefix); i < len(raw); i++ {
+		if c := raw[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func OwnsProject(principal Principal, project domain.Project) bool {

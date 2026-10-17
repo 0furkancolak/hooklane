@@ -73,7 +73,9 @@ func Classify(result WebhookResult) (succeeded, retryable bool) {
 	case code >= 200 && code < 300:
 		return true, false
 	case code == 0:
-		return false, result.Err != nil
+		// A blocked destination stays blocked; everything else without a
+		// response (DNS, connect, TLS, timeout) may be transient.
+		return false, result.Err != nil && !errors.Is(result.Err, ErrDestinationNotAllowed)
 	case code == http.StatusRequestTimeout, code == http.StatusTooEarly, code == http.StatusTooManyRequests, code >= 500:
 		return false, true
 	default:
