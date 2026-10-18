@@ -213,7 +213,7 @@ curl -X POST localhost:8090/v1/projects/$PROJECT_ID/events \
 | --- | --- |
 | ![Sign-in screen](docs/screenshots/sign-in.png) | ![Deliveries list](docs/screenshots/deliveries-dark.png) |
 
-The light theme follows your system setting and can be switched in the sidebar.
+The dashboard speaks English and Turkish (it follows the browser language and remembers your choice; switch it in the sidebar). The light and dark themes share one neutral design, follow your system setting and can be switched in the sidebar. Lists keep their filters, page size and page in the URL, so any view can be bookmarked or shared.
 
 ### Try it without writing code: the playground
 

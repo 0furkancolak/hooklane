@@ -5,6 +5,7 @@ import { productName } from "../shared/product";
 import { Empty } from "../shared/ui/States";
 import { Icon, type IconName } from "../shared/ui/Icon";
 import { useTheme } from "../shared/theme";
+import { languages, t, useLang } from "../shared/i18n";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { OverviewPage } from "../features/projects/OverviewPage";
 import { PlaygroundPage } from "../features/playground/PlaygroundPage";
@@ -19,6 +20,7 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
   const route = useRoute();
   const projectId = "projectId" in route ? route.projectId : null;
   const [theme, toggleTheme] = useTheme();
+  const { lang, setLang } = useLang();
   const api = useApi();
   const [project] = useAsync((signal) => (projectId ? api.getProject(projectId, signal) : Promise.resolve(null)), [api, projectId]);
   const projectName = project.status === "ready" && project.data ? project.data.name : null;
@@ -27,20 +29,24 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
     <div className="shell">
       <aside className="sidebar">
         <a className="brand" href={href("projects")}>
-          <span className="brand-mark">
-            <Icon name="bolt" size={16} />
-          </span>
           {productName}
         </a>
         {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <HomeNav />}
         <div className="sidebar-foot">
-          <button type="button" className="button button-ghost" onClick={toggleTheme} aria-label="Switch theme">
+          <div className="segmented" role="group" aria-label={t("nav.language")}>
+            {languages.map((l) => (
+              <button key={l.code} type="button" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="button button-ghost" onClick={toggleTheme} aria-label={t("nav.switchTheme")}>
             <Icon name={theme === "dark" ? "sun" : "moon"} />
-            <span className="btn-label">{theme === "dark" ? "Light theme" : "Dark theme"}</span>
+            <span className="btn-label">{theme === "dark" ? t("nav.lightTheme") : t("nav.darkTheme")}</span>
           </button>
-          <button type="button" className="button button-ghost signout" onClick={onSignOut} aria-label="Sign out">
+          <button type="button" className="button button-ghost signout" onClick={onSignOut} aria-label={t("nav.signOut")}>
             <Icon name="logout" />
-            <span className="btn-label">Sign out</span>
+            <span className="btn-label">{t("nav.signOut")}</span>
           </button>
         </div>
       </aside>
@@ -54,34 +60,46 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
-const pageTitles: Record<Route["name"], string> = {
-  projects: "Projects",
-  overview: "Overview",
-  endpoints: "Endpoints",
-  playground: "Playground",
-  api_keys: "API keys",
-  events: "Events",
-  event: "Event",
-  deliveries: "Deliveries",
-  delivery: "Delivery",
-  not_found: "Not found",
-};
+function pageTitle(name: Route["name"]): string {
+  switch (name) {
+    case "projects":
+      return t("nav.projects");
+    case "overview":
+      return t("nav.overview");
+    case "playground":
+      return t("nav.playground");
+    case "endpoints":
+      return t("nav.endpoints");
+    case "api_keys":
+      return t("nav.apiKeys");
+    case "events":
+      return t("nav.events");
+    case "event":
+      return t("crumb.event");
+    case "deliveries":
+      return t("nav.deliveries");
+    case "delivery":
+      return t("crumb.delivery");
+    case "not_found":
+      return t("crumb.notFound");
+  }
+}
 
 function Topbar({ route, projectId, projectName }: { route: Route; projectId: string | null; projectName: string | null }) {
   return (
     <header className="topbar">
-      <nav aria-label="Breadcrumb" className="breadcrumb">
-        <a href={href("projects")}>Projects</a>
+      <nav aria-label={t("nav.breadcrumb")} className="breadcrumb">
+        <a href={href("projects")}>{t("nav.projects")}</a>
         {projectId && (
           <>
             <span aria-hidden="true">/</span>
-            <a href={href("projects", projectId)}>{projectName ?? "Project"}</a>
+            <a href={href("projects", projectId)}>{projectName ?? t("nav.project")}</a>
           </>
         )}
         {route.name !== "projects" && route.name !== "overview" && (
           <>
             <span aria-hidden="true">/</span>
-            <span aria-current="page">{pageTitles[route.name]}</span>
+            <span aria-current="page">{pageTitle(route.name)}</span>
           </>
         )}
       </nav>
@@ -91,42 +109,42 @@ function Topbar({ route, projectId, projectName }: { route: Route; projectId: st
 
 function HomeNav() {
   return (
-    <nav aria-label="Main" className="project-nav">
+    <nav aria-label={t("nav.main")} className="project-nav">
       <ul className="nav">
         <li>
           <a href={href("projects")} aria-current="page">
             <Icon name="overview" />
-            Projects
+            {t("nav.projects")}
           </a>
         </li>
         <li>
           <a href="/openapi.yaml" target="_blank" rel="noreferrer">
             <Icon name="events" />
-            API reference
+            {t("nav.apiReference")}
           </a>
         </li>
       </ul>
-      <p className="nav-hint">Open a project to see its playground, endpoints, events and deliveries.</p>
+      <p className="nav-hint">{t("nav.openProjectHint")}</p>
     </nav>
   );
 }
 
 function ProjectNav({ projectId, projectName, route }: { projectId: string; projectName: string | null; route: Route }) {
   const items: { label: string; icon: IconName; target: string; active: boolean }[] = [
-    { label: "Overview", icon: "overview", target: href("projects", projectId), active: route.name === "overview" },
-    { label: "Playground", icon: "play", target: href("projects", projectId, "playground"), active: route.name === "playground" },
-    { label: "Endpoints", icon: "endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
-    { label: "Events", icon: "events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
-    { label: "Deliveries", icon: "deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
-    { label: "API keys", icon: "key", target: href("projects", projectId, "api-keys"), active: route.name === "api_keys" },
+    { label: t("nav.overview"), icon: "overview", target: href("projects", projectId), active: route.name === "overview" },
+    { label: t("nav.playground"), icon: "play", target: href("projects", projectId, "playground"), active: route.name === "playground" },
+    { label: t("nav.endpoints"), icon: "endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
+    { label: t("nav.events"), icon: "events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
+    { label: t("nav.deliveries"), icon: "deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
+    { label: t("nav.apiKeys"), icon: "key", target: href("projects", projectId, "api-keys"), active: route.name === "api_keys" },
   ];
   return (
-    <nav aria-label="Project" className="project-nav">
-      <a className="project-switch" href={href("projects")} title="All projects">
+    <nav aria-label={t("nav.project")} className="project-nav">
+      <a className="project-switch" href={href("projects")} title={t("nav.allProjects")}>
         <span className="project-avatar">{projectName ? projectName.slice(0, 1).toUpperCase() : "·"}</span>
         <span className="project-switch-text">
-          <small>Project</small>
-          {projectName ?? "Loading…"}
+          <small>{t("nav.project")}</small>
+          {projectName ?? t("common.loading")}
         </span>
         <Icon name="swap" size={14} />
       </a>
@@ -153,11 +171,11 @@ function Page({ route }: { route: Route }) {
     case "playground":
       return <PlaygroundPage projectId={route.projectId} />;
     case "endpoints":
-      return <EndpointsPage projectId={route.projectId} />;
+      return <EndpointsPage projectId={route.projectId} query={route.query} />;
     case "api_keys":
       return <APIKeysPage projectId={route.projectId} />;
     case "events":
-      return <EventsPage projectId={route.projectId} />;
+      return <EventsPage projectId={route.projectId} query={route.query} />;
     case "event":
       return <EventDetailPage key={route.eventId} projectId={route.projectId} eventId={route.eventId} />;
     case "deliveries":
@@ -166,8 +184,8 @@ function Page({ route }: { route: Route }) {
       return <DeliveryDetailPage key={route.deliveryId} projectId={route.projectId} deliveryId={route.deliveryId} />;
     case "not_found":
       return (
-        <Empty title="Page not found">
-          <a href={href("projects")}>Back to projects</a>
+        <Empty title={t("notFound.title")}>
+          <a href={href("projects")}>{t("notFound.back")}</a>
         </Empty>
       );
   }

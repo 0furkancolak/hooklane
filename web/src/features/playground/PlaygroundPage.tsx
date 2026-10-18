@@ -4,6 +4,8 @@ import { useApi } from "../../shared/api/context";
 import { isTerminal, type Attempt, type Delivery, type IngestedEvent, type SinkRequest } from "../../shared/api/types";
 import { describeError } from "../../shared/errors";
 import { formatTime, shortId } from "../../shared/format";
+import { t, tn } from "../../shared/i18n";
+import { PageHeader } from "../../shared/ui/PageHeader";
 import { href } from "../../shared/router";
 import { useAsync } from "../../shared/useAsync";
 import { Icon } from "../../shared/ui/Icon";
@@ -91,7 +93,7 @@ export function PlaygroundPage({ projectId }: { projectId: string }) {
     try {
       parsed = JSON.parse(payload);
     } catch {
-      setError("The payload is not valid JSON.");
+      setError(t("playground.invalidJson"));
       return;
     }
     setBusy(true);
@@ -100,7 +102,7 @@ export function PlaygroundPage({ projectId }: { projectId: string }) {
       const ingested = await api.ingestEvent(projectId, { event_type: eventType.trim(), payload: parsed });
       setSent({ event: ingested, url: receiverUrl, secret });
     } catch (err) {
-      setError(err instanceof Error ? describeError(err) : "Could not send the event.");
+      setError(err instanceof Error ? describeError(err) : t("playground.sendFailed"));
     } finally {
       setBusy(false);
     }
@@ -110,58 +112,49 @@ export function PlaygroundPage({ projectId }: { projectId: string }) {
 
   return (
     <section className="playground">
-      <div className="section-head">
-        <div>
-          <h1>Playground</h1>
-          <p className="subtitle">Send a test event and watch Hooklane deliver it. Nothing here is hypothetical: these are real events, deliveries and attempts.</p>
-        </div>
-      </div>
+      <PageHeader title={t("nav.playground")} subtitle={t("playground.subtitle")} />
 
       {otherEndpoints > 0 && (
         <p className="notice" role="note">
-          This project already has {otherEndpoints} other enabled {otherEndpoints === 1 ? "endpoint" : "endpoints"}, and every event goes to all of them. For a clean demo, use a project of its own.
+          {tn("playground.otherEndpoints", otherEndpoints)}
         </p>
       )}
 
       <form className="play-grid" onSubmit={send}>
         <div className="panel play-step">
           <h2>
-            <span className="step-no">1</span> Choose a receiver
+            <span className="step-no">1</span> {t("playground.step1")}
           </h2>
-          <p className="muted">The receiver is the URL that should be told about events. In real use it is your customer's server.</p>
-          <div className="choice" role="radiogroup" aria-label="Receiver">
-            <label aria-label="Built-in receiver" className={`choice-item ${mode === "builtin" ? "is-selected" : ""} ${builtinAvailable ? "" : "is-disabled"}`}>
+          <p className="muted">{t("playground.step1.text")}</p>
+          <div className="choice" role="radiogroup" aria-label={t("playground.receiver")}>
+            <label aria-label={t("playground.builtin")} className={`choice-item ${mode === "builtin" ? "is-selected" : ""} ${builtinAvailable ? "" : "is-disabled"}`}>
               <input type="radio" name="receiver" checked={mode === "builtin"} disabled={!builtinAvailable} onChange={() => setMode("builtin")} />
               <span>
-                <strong>Built-in receiver</strong>
+                <strong>{t("playground.builtin")}</strong>
                 <span className="muted">
-                  {receiver.loading
-                    ? "Checking…"
-                    : builtinAvailable
-                      ? "Catches the request so you can inspect it. Development mode only."
-                      : "Available when the API runs with APP_ENV=development."}
+                  {receiver.loading ? t("common.checking") : builtinAvailable ? t("playground.builtin.text") : t("playground.builtin.unavailable")}
                 </span>
               </span>
             </label>
-            <label aria-label="My own URL" className={`choice-item ${mode === "custom" ? "is-selected" : ""}`}>
+            <label aria-label={t("playground.custom")} className={`choice-item ${mode === "custom" ? "is-selected" : ""}`}>
               <input type="radio" name="receiver" checked={mode === "custom"} onChange={() => setMode("custom")} />
               <span>
-                <strong>My own URL</strong>
-                <span className="muted">Any public https URL, for example one from webhook.site.</span>
+                <strong>{t("playground.custom")}</strong>
+                <span className="muted">{t("playground.custom.text")}</span>
               </span>
             </label>
           </div>
           {mode === "custom" ? (
             <div className="field">
-              <label htmlFor="play-url">Receiver URL</label>
+              <label htmlFor="play-url">{t("playground.url")}</label>
               <input id="play-url" type="url" placeholder="https://webhook.site/your-id" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} />
             </div>
           ) : (
             <div className="field">
-              <label htmlFor="play-behaviour">Receiver behaviour</label>
+              <label htmlFor="play-behaviour">{t("playground.behaviour")}</label>
               <select id="play-behaviour" value={behaviour} onChange={(e) => setBehaviour(e.target.value as Behaviour)}>
-                <option value="ok">Answer 200 (success)</option>
-                <option value="fail">Answer 503 (watch the retries)</option>
+                <option value="ok">{t("playground.behaviour.ok")}</option>
+                <option value="fail">{t("playground.behaviour.fail")}</option>
               </select>
             </div>
           )}
@@ -169,39 +162,39 @@ export function PlaygroundPage({ projectId }: { projectId: string }) {
 
         <div className="panel play-step">
           <h2>
-            <span className="step-no">2</span> Write an event
+            <span className="step-no">2</span> {t("playground.step2")}
           </h2>
-          <p className="muted">An event is a type plus a JSON payload. Hooklane delivers it to every enabled endpoint of this project.</p>
+          <p className="muted">{t("playground.step2.text")}</p>
           <div className="field">
-            <label htmlFor="play-template">Start from</label>
+            <label htmlFor="play-template">{t("playground.startFrom")}</label>
             <select id="play-template" value={templateIndex} onChange={(e) => chooseTemplate(Number(e.target.value))}>
-              {eventTemplates.map((t, i) => (
-                <option key={t.eventType} value={i}>
-                  {t.label}
+              {eventTemplates.map((tpl, i) => (
+                <option key={tpl.eventType} value={i}>
+                  {t(tpl.label)}
                 </option>
               ))}
             </select>
           </div>
           <div className="field">
-            <label htmlFor="play-type">Event type</label>
+            <label htmlFor="play-type">{t("playground.eventType")}</label>
             <input id="play-type" required maxLength={200} value={eventType} onChange={(e) => setEventType(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="play-payload">Payload (JSON)</label>
+            <label htmlFor="play-payload">{t("playground.payload")}</label>
             <textarea id="play-payload" rows={7} spellCheck={false} value={payload} onChange={(e) => setPayload(e.target.value)} />
           </div>
         </div>
 
         <div className="panel play-step play-send">
           <h2>
-            <span className="step-no">3</span> Send it
+            <span className="step-no">3</span> {t("playground.step3")}
           </h2>
           <p className="muted">
-            One request to <code>POST /v1/projects/…/events</code>. Hooklane answers immediately and delivers in the background.
+            {t("playground.step3.text")} <code>POST /v1/projects/…/events</code>
           </p>
           <button type="submit" className="button button-primary" disabled={!canSend}>
             <Icon name="play" size={16} />
-            {busy ? "Sending…" : "Send test event"}
+            {busy ? t("playground.sending") : t("playground.send")}
           </button>
           {error && (
             <p className="field-error" role="alert">
@@ -261,29 +254,29 @@ function Result({ projectId, sent, token, showReceived }: { projectId: string; s
 
   return (
     <div className="panel result" aria-live="polite">
-      <h2>What happened</h2>
+      <h2>{t("playground.result")}</h2>
       <ol className="timeline">
         <li>
-          <strong>Event accepted.</strong> <code>{sent.event.event_type}</code> was stored as{" "}
+          <strong>{t("playground.accepted")}</strong> <code>{sent.event.event_type}</code>{" "}
           <a href={href("projects", projectId, "events", sent.event.id)}>
             <code>{shortId(sent.event.id)}</code>
-          </a>{" "}
-          and queued for <strong>{sent.event.delivery_count}</strong> {sent.event.delivery_count === 1 ? "endpoint" : "endpoints"}.
+          </a>
+          . {tn("playground.queued", sent.event.delivery_count)}
         </li>
         {rows.map(({ delivery, attempts }) => (
           <li key={delivery.id}>
-            <strong>Delivery</strong>{" "}
+            <strong>{t("playground.delivery")}</strong>{" "}
             <a href={href("projects", projectId, "deliveries", delivery.id)}>
               <code>{shortId(delivery.id)}</code>
             </a>{" "}
             <StatusBadge status={delivery.status} />
-            {attempts.length === 0 && !isTerminal(delivery.status) && <span className="muted"> waiting for the worker to pick it up…</span>}
+            {attempts.length === 0 && !isTerminal(delivery.status) && <span className="muted"> {t("playground.waitingWorker")}</span>}
             <ul className="attempts">
               {[...attempts]
                 .sort((a, b) => a.attempt_number - b.attempt_number)
                 .map((attempt) => (
                   <li key={attempt.id}>
-                    Attempt {attempt.attempt_number}: <HttpStatus code={attempt.status_code} /> {attempt.error && <span className="muted">{attempt.error} </span>}
+                    {t("playground.attempt", { n: attempt.attempt_number })} <HttpStatus code={attempt.status_code} /> {attempt.error && <span className="muted">{attempt.error} </span>}
                     <span className="muted">
                       {attempt.duration_ms !== null ? `${attempt.duration_ms} ms, ` : ""}
                       {formatTime(attempt.attempted_at)}
@@ -292,19 +285,19 @@ function Result({ projectId, sent, token, showReceived }: { projectId: string; s
                 ))}
             </ul>
             {delivery.status === "pending" && delivery.attempt_count > 0 && (
-              <p className="muted">Failed, so Hooklane retries with a growing delay between attempts. Open the delivery to follow the retries.</p>
+              <p className="muted">{t("playground.willRetry")}</p>
             )}
-            {delivery.status === "succeeded" && <p className="muted">The receiver answered with a 2xx, so the delivery is complete.</p>}
+            {delivery.status === "succeeded" && <p className="muted">{t("playground.done")}</p>}
           </li>
         ))}
         {rows.length === 0 && sent.event.delivery_count === 0 && (
-          <li className="muted">No deliveries were created, so this project has no enabled endpoint.</li>
+          <li className="muted">{t("playground.noDeliveries")}</li>
         )}
       </ol>
-      {waiting && !finished && <p className="muted">Checking every second or so…</p>}
+      {waiting && !finished && <p className="muted">{t("playground.polling")}</p>}
       {sent.secret && (
         <p className="muted">
-          A new endpoint was created for <code>{sent.url}</code>. Its signing secret is available on the <a href={href("projects", projectId, "endpoints")}>Endpoints</a> page.
+          {t("playground.endpointCreated")} <code>{sent.url}</code>. <a href={href("projects", projectId, "endpoints")}>{t("playground.secretLink")}</a>
         </p>
       )}
       {showReceived && <Received requests={received} />}
@@ -313,12 +306,12 @@ function Result({ projectId, sent, token, showReceived }: { projectId: string; s
 }
 
 function Received({ requests }: { requests: SinkRequest[] }) {
-  if (requests.length === 0) return <p className="muted">The built-in receiver has not been called yet.</p>;
+  if (requests.length === 0) return <p className="muted">{t("playground.notCalled")}</p>;
   const latest = requests[0];
   const interesting = Object.entries(latest.headers).filter(([name]) => /^webhook-|^content-type$|^user-agent$/i.test(name));
   return (
     <div className="received">
-      <h3>What the receiver got (latest request)</h3>
+      <h3>{t("playground.received")}</h3>
       <dl className="kv">
         {interesting.map(([name, value]) => (
           <div key={name}>
@@ -331,7 +324,7 @@ function Received({ requests }: { requests: SinkRequest[] }) {
       </dl>
       <pre className="code-block">{prettyBody(latest.body)}</pre>
       <p className="muted">
-        The <code>webhook-signature</code> header lets a real receiver prove the request came from Hooklane.
+        {t("playground.signatureNote")}
       </p>
     </div>
   );

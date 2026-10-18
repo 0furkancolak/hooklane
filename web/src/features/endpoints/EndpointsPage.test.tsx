@@ -23,7 +23,7 @@ describe("EndpointsPage", () => {
         return { status: 201, body: { ...endpoint, secret: "whsec_test" } };
       },
     });
-    renderWithApi(<EndpointsPage projectId={ids.project} />, fetch);
+    renderWithApi(<EndpointsPage projectId={ids.project} query={new URLSearchParams()} />, fetch);
 
     expect(await screen.findByText("No endpoints yet")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Endpoint URL"), "https://hooks.example.com/in");
@@ -44,7 +44,7 @@ describe("EndpointsPage", () => {
         body: { error: { code: "destination_not_allowed", message: "endpoint URL points to an address that is not allowed" } },
       }),
     });
-    renderWithApi(<EndpointsPage projectId={ids.project} />, fetch);
+    renderWithApi(<EndpointsPage projectId={ids.project} query={new URLSearchParams()} />, fetch);
     await userEvent.type(await screen.findByLabelText("Endpoint URL"), "https://169.254.169.254/");
     await userEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("private, internal or reserved address");
@@ -60,7 +60,7 @@ describe("EndpointsPage", () => {
       },
       [`GET /v1/endpoints/${ids.endpoint}/secret`]: () => ({ body: { secret: "whsec_revealed" } }),
     });
-    renderWithApi(<EndpointsPage projectId={ids.project} />, fetch);
+    renderWithApi(<EndpointsPage projectId={ids.project} query={new URLSearchParams()} />, fetch);
 
     await userEvent.click(await screen.findByRole("button", { name: "Disable" }));
     expect(await screen.findByRole("button", { name: "Enable" })).toBeInTheDocument();

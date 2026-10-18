@@ -20,9 +20,9 @@ describe("DeliveryDetailPage", () => {
     renderWithApi(<DeliveryDetailPage projectId={ids.project} deliveryId={ids.delivery} />, fetch);
 
     expect(await screen.findByText("#2")).toBeInTheDocument();
-    expect(screen.getByText("dead letter")).toBeInTheDocument();
+    expect(screen.getByText("Dead letter")).toBeInTheDocument();
     expect(screen.getByText("dial tcp: connection refused")).toBeInTheDocument();
-    expect(screen.getByText("no response")).toBeInTheDocument();
+    expect(screen.getByText("No response")).toBeInTheDocument();
     expect(screen.getByText("503")).toBeInTheDocument();
     expect(screen.getByText("upstream down")).toBeInTheDocument();
   });

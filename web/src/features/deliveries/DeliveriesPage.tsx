@@ -1,13 +1,15 @@
 import { useApi } from "../../shared/api/context";
 import { deliveryStatuses, type DeliveryStatus } from "../../shared/api/types";
-import { href, navigate } from "../../shared/router";
-import { useAsync } from "../../shared/useAsync";
 import { statusLabel } from "../../shared/format";
-import { ErrorState, Loading } from "../../shared/ui/States";
+import { t } from "../../shared/i18n";
+import { readListQuery, updateListQuery } from "../../shared/listQuery";
+import { href } from "../../shared/router";
+import { useAsync } from "../../shared/useAsync";
+import { Icon } from "../../shared/ui/Icon";
+import { PageHeader } from "../../shared/ui/PageHeader";
 import { Pager } from "../../shared/ui/Pager";
+import { ErrorState, Loading } from "../../shared/ui/States";
 import { DeliveryTable } from "./DeliveryTable";
-
-const pageSize = 25;
 
 // Filters live in the URL (#/projects/{id}/deliveries?status=…) so views can
 // be linked from the overview and shared.
@@ -16,58 +18,81 @@ export function DeliveriesPage({ projectId, query }: { projectId: string; query:
   const rawStatus = query.get("status") ?? "";
   const status = (deliveryStatuses as readonly string[]).includes(rawStatus) ? (rawStatus as DeliveryStatus) : undefined;
   const endpointId = query.get("endpoint_id") ?? undefined;
-  const offset = Math.max(0, Number(query.get("offset") ?? 0) || 0);
+  const { offset, limit } = readListQuery(query);
 
   const [state, reload] = useAsync(
-    (signal) => api.listDeliveries(projectId, { limit: pageSize, offset, status, endpoint_id: endpointId }, signal),
-    [api, projectId, status, endpointId, offset],
+    (signal) => api.listDeliveries(projectId, { limit, offset, status, endpoint_id: endpointId }, signal),
+    [api, projectId, status, endpointId, offset, limit],
   );
+  const [endpoints] = useAsync((signal) => api.listEndpoints(projectId, { limit: 100 }, signal), [api, projectId]);
 
-  function update(change: Record<string, string | undefined>) {
-    const next = new URLSearchParams(query);
-    for (const [key, value] of Object.entries(change)) {
-      if (value === undefined || value === "") next.delete(key);
-      else next.set(key, value);
-    }
-    if (!("offset" in change)) next.delete("offset");
-    const search = next.toString();
-    navigate(href("projects", projectId, "deliveries") + (search ? `?${search}` : ""));
-  }
+  const base = href("projects", projectId, "deliveries");
+  const update = (change: Record<string, string | undefined>) => updateListQuery(base, query, change);
+  const filtered = status !== undefined || endpointId !== undefined;
 
   return (
     <section>
-      <div className="section-head">
-        <h1>Deliveries</h1>
-        <button type="button" className="button" onClick={reload}>
-          Refresh
-        </button>
-      </div>
-      <div className="filters" role="group" aria-label="Filter by status">
-        <button type="button" className={`chip ${status === undefined ? "chip-active" : ""}`} onClick={() => update({ status: undefined })}>
-          all
-        </button>
-        {deliveryStatuses.map((s) => (
-          <button key={s} type="button" className={`chip ${status === s ? "chip-active" : ""}`} onClick={() => update({ status: s })}>
-            {statusLabel(s)}
+      <PageHeader
+        title={t("nav.deliveries")}
+        subtitle={t("deliveries.subtitle")}
+        actions={
+          <button type="button" className="button" onClick={reload}>
+            <Icon name="refresh" size={15} />
+            {t("common.refresh")}
           </button>
-        ))}
-        {endpointId && (
-          <button type="button" className="chip chip-active" onClick={() => update({ endpoint_id: undefined })} title="Clear endpoint filter">
-            endpoint {endpointId.slice(0, 8)} ×
+        }
+      />
+      <div className="toolbar">
+        <div className="segmented" role="group" aria-label={t("deliveries.filterStatus")}>
+          <button type="button" aria-pressed={status === undefined} onClick={() => update({ status: undefined })}>
+            {t("common.all")}
+          </button>
+          {deliveryStatuses.map((s) => (
+            <button key={s} type="button" aria-pressed={status === s} onClick={() => update({ status: s })}>
+              {statusLabel(s)}
+            </button>
+          ))}
+        </div>
+        <label className="select-field">
+          <span className="sr-only">{t("deliveries.filterEndpoint")}</span>
+          <select value={endpointId ?? ""} onChange={(e) => update({ endpoint_id: e.target.value || undefined })}>
+            <option value="">{t("deliveries.allEndpoints")}</option>
+            {endpoints.status === "ready" &&
+              endpoints.data.endpoints.map((endpoint) => (
+                <option key={endpoint.id} value={endpoint.id}>
+                  {endpoint.url}
+                </option>
+              ))}
+            {endpointId && !(endpoints.status === "ready" && endpoints.data.endpoints.some((e) => e.id === endpointId)) && <option value={endpointId}>{endpointId.slice(0, 8)}</option>}
+          </select>
+        </label>
+        {filtered && (
+          <button type="button" className="button button-ghost" onClick={() => update({ status: undefined, endpoint_id: undefined })}>
+            {t("common.clearFilters")}
           </button>
         )}
       </div>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
       {state.status === "ready" && (
-        <>
+        <div className="panel panel-flush">
           <DeliveryTable
+            flush
             projectId={projectId}
             deliveries={state.data.deliveries}
-            emptyText={status || endpointId ? "Nothing matches these filters." : "Deliveries appear here once events arrive for enabled endpoints."}
+            emptyText={filtered ? t("deliveries.noMatch") : t("deliveries.emptyHint")}
           />
-          <Pager offset={offset} limit={pageSize} nextOffset={state.data.next_offset} onChange={(o) => update({ offset: String(o) })} />
-        </>
+          {(state.data.deliveries.length > 0 || offset > 0) && (
+            <Pager
+              offset={offset}
+              limit={limit}
+              count={state.data.deliveries.length}
+              nextOffset={state.data.next_offset}
+              onOffsetChange={(o) => update({ offset: String(o) })}
+              onLimitChange={(l) => update({ limit: String(l) })}
+            />
+          )}
+        </div>
       )}
     </section>
   );

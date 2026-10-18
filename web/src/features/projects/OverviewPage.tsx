@@ -2,16 +2,19 @@ import type { DeliveryStats, DeliveryStatus } from "../../shared/api/types";
 import { useApi } from "../../shared/api/context";
 import { href } from "../../shared/router";
 import { useAsync } from "../../shared/useAsync";
-import { formatRelative } from "../../shared/format";
+import { formatNumber, formatRelative } from "../../shared/format";
+import { statusLabel } from "../../shared/format";
+import { t } from "../../shared/i18n";
+import { PageHeader } from "../../shared/ui/PageHeader";
 import { Icon, type IconName } from "../../shared/ui/Icon";
 import { ErrorState, Loading } from "../../shared/ui/States";
 import { DeliveryTable } from "../deliveries/DeliveryTable";
 
-const tiles: { status: DeliveryStatus; label: string; icon: IconName }[] = [
-  { status: "pending", label: "Pending", icon: "clock" },
-  { status: "processing", label: "Processing", icon: "loader" },
-  { status: "succeeded", label: "Succeeded", icon: "check" },
-  { status: "dead_letter", label: "Dead letter", icon: "alert" },
+const tiles: { status: DeliveryStatus; icon: IconName }[] = [
+  { status: "pending", icon: "clock" },
+  { status: "processing", icon: "loader" },
+  { status: "succeeded", icon: "check" },
+  { status: "dead_letter", icon: "alert" },
 ];
 
 export function OverviewPage({ projectId }: { projectId: string }) {
@@ -20,16 +23,16 @@ export function OverviewPage({ projectId }: { projectId: string }) {
 
   return (
     <section>
-      <div className="section-head">
-        <div>
-          <h1>Overview</h1>
-          <p className="subtitle">Delivery health for this project, straight from the queue.</p>
-        </div>
-        <button type="button" className="button" onClick={reload}>
-          <Icon name="refresh" size={15} />
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        title={t("nav.overview")}
+        subtitle={t("overview.subtitle")}
+        actions={
+          <button type="button" className="button" onClick={reload}>
+            <Icon name="refresh" size={15} />
+            {t("common.refresh")}
+          </button>
+        }
+      />
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
       {state.status === "ready" && <Stats projectId={projectId} stats={state.data} />}
@@ -48,15 +51,14 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
       {total === 0 && (
         <div className="panel hero">
           <div>
-            <h2>Nothing has been delivered yet</h2>
+            <h2>{t("overview.empty.title")}</h2>
             <p className="muted">
-              Send a test event from the playground to see Hooklane deliver, retry and log a webhook. Then wire your own app to{" "}
-              <code>POST /v1/projects/{projectId.slice(0, 8)}…/events</code>.
+              {t("overview.empty.text")} <code>POST /v1/projects/{projectId.slice(0, 8)}…/events</code>
             </p>
           </div>
           <a className="button button-primary" href={href("projects", projectId, "playground")}>
             <Icon name="play" size={16} />
-            Open the playground
+            {t("projects.openPlayground")}
           </a>
         </div>
       )}
@@ -64,7 +66,7 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
         {tiles.map((tile) => (
           <Stat
             key={tile.status}
-            label={tile.label}
+            label={statusLabel(tile.status)}
             icon={tile.icon}
             value={stats[tile.status]}
             share={total === 0 ? 0 : stats[tile.status] / total}
@@ -77,15 +79,15 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
       <div className="overview-grid">
         <div className="card panel-card">
           <div className="card-head">
-            <h2>Delivery health</h2>
-            <span className="muted">{total.toLocaleString()} deliveries</span>
+            <h2>{t("overview.health")}</h2>
+            <span className="muted">{t("overview.deliveriesCount", { count: formatNumber(total) })}</span>
           </div>
           <div className="health">
             <div className="health-rate">
               <span className="big-number">{successRate === null ? "—" : `${successRate}%`}</span>
-              <span className="muted">success rate of finished deliveries</span>
+              <span className="muted">{t("overview.successRate")}</span>
             </div>
-            <div className="segments" role="img" aria-label="Share of deliveries by status">
+            <div className="segments" role="img" aria-label={t("overview.shareLabel")}>
               {tiles
                 .filter((tile) => stats[tile.status] > 0)
                 .map((tile) => (
@@ -97,8 +99,8 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
               {tiles.map((tile) => (
                 <li key={tile.status}>
                   <span className={`legend-dot segment-${tile.status}`} />
-                  {tile.label}
-                  <strong>{stats[tile.status].toLocaleString()}</strong>
+                  {statusLabel(tile.status)}
+                  <strong>{formatNumber(stats[tile.status])}</strong>
                 </li>
               ))}
             </ul>
@@ -107,13 +109,13 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
 
         <div className="card panel-card">
           <div className="card-head">
-            <h2>Queue</h2>
+            <h2>{t("overview.queue")}</h2>
           </div>
-          <p className="big-number">{stats.oldest_due_at ? formatRelative(stats.oldest_due_at) : "Empty"}</p>
+          <p className="big-number">{stats.oldest_due_at ? formatRelative(stats.oldest_due_at) : t("overview.queueEmpty")}</p>
           <p className="muted">
             {stats.oldest_due_at
-              ? "The oldest due delivery has been waiting this long. If it keeps growing, check that a worker is running."
-              : "No deliveries are waiting for a worker."}
+              ? t("overview.queueWaiting")
+              : t("overview.queueNone")}
           </p>
         </div>
       </div>
@@ -129,16 +131,16 @@ function RecentDeliveries({ projectId }: { projectId: string }) {
   return (
     <div className="card panel-card">
       <div className="card-head">
-        <h2>Recent deliveries</h2>
+        <h2>{t("overview.recent")}</h2>
         <a className="link-arrow" href={href("projects", projectId, "deliveries")}>
-          View all
+          {t("common.viewAll")}
           <Icon name="arrow" size={14} />
         </a>
       </div>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
       {state.status === "ready" && (
-        <DeliveryTable projectId={projectId} deliveries={state.data.deliveries} emptyText="Deliveries appear here once events arrive for enabled endpoints." />
+        <DeliveryTable projectId={projectId} deliveries={state.data.deliveries} emptyText={t("deliveries.emptyHint")} />
       )}
     </div>
   );
@@ -154,7 +156,7 @@ function Stat({ label, icon, value, share, tone, link }: { label: string; icon: 
         <span className="stat-label">{label}</span>
         <Icon name="arrow" size={14} />
       </span>
-      <span className="stat-value">{value.toLocaleString()}</span>
+      <span className="stat-value">{formatNumber(value)}</span>
       <span className="meter" aria-hidden="true">
         <span style={{ width: `${Math.max(share * 100, value > 0 ? 4 : 0)}%` }} />
       </span>

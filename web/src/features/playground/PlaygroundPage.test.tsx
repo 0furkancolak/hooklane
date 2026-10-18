@@ -39,8 +39,8 @@ describe("PlaygroundPage", () => {
     await userEvent.type(await screen.findByLabelText("Receiver URL"), "https://hooks.example.com/in");
     await userEvent.click(screen.getByRole("button", { name: "Send test event" }));
 
-    expect(await screen.findByText(/was stored as/)).toBeInTheDocument();
-    expect(await screen.findByText("succeeded")).toBeInTheDocument();
+    expect(await screen.findByText("Event accepted:")).toBeInTheDocument();
+    expect(await screen.findByText("Succeeded")).toBeInTheDocument();
     expect(await screen.findByText(/Attempt 1:/)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/endpoints"))?.body).toEqual({ url: "https://hooks.example.com/in" });
     expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/events"))?.body).toMatchObject({ event_type: "invoice.paid" });
