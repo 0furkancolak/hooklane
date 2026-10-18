@@ -121,8 +121,9 @@ What is safe to scale, and how it coordinates:
   block or double-delete. N workers simply prune N times an hour, which is
   redundant but harmless. Events that still have pending or processing
   deliveries are kept.
-- **Migrations** are not guarded by a lock. Run `migrate up` from exactly one
-  place at a time (the `migrate` service or Job); do not start two at once.
+- **Migrations** take a PostgreSQL advisory lock, so two `migrate up` runs
+  started together take turns and the second finds nothing to do. Running it
+  from one place (the `migrate` service or Job) is still the simplest setup.
 - **Rate limiting** is per API replica and keyed by the connecting address,
   and the API does not trust `X-Forwarded-For`. Behind a proxy that address
   is the proxy, so every client would share one bucket per replica. The

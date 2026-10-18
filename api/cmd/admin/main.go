@@ -15,6 +15,7 @@ import (
 	"github.com/0furkancolak/hooklane/api/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -105,7 +106,13 @@ func runMigrate(args []string) error {
 		return err
 	}
 	defer func() { _ = db.Close() }()
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
+	// A session-level advisory lock makes concurrent "migrate up" runs (several
+	// replicas starting together) take turns instead of racing.
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS, goose.WithSessionLocker(locker))
 	if err != nil {
 		return err
 	}
