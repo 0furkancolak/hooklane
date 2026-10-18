@@ -34,6 +34,10 @@ type Config struct {
 	// automatic deletion.
 	RetentionPeriod time.Duration
 
+	// LogFormat is "json" or "pretty". It defaults to pretty in development
+	// and json elsewhere.
+	LogFormat string
+
 	RateLimit RateLimitConfig
 
 	Worker WorkerConfig
@@ -107,6 +111,18 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("RETENTION_PERIOD must be a duration of at least 1h, or 0 to disable")
 	}
 	cfg.RetentionPeriod = retention
+
+	switch format := strings.ToLower(getenv("LOG_FORMAT", "")); format {
+	case "":
+		cfg.LogFormat = "json"
+		if cfg.AppEnv == AppEnvDevelopment {
+			cfg.LogFormat = "pretty"
+		}
+	case "json", "pretty":
+		cfg.LogFormat = format
+	default:
+		return Config{}, fmt.Errorf("LOG_FORMAT must be json or pretty")
+	}
 
 	if cfg.RateLimit, err = loadRateLimit(); err != nil {
 		return Config{}, err

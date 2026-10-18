@@ -17,6 +17,8 @@ type createProjectRequest struct {
 
 type createAPIKeyRequest struct {
 	Name string `json:"name"`
+	// Scopes defaults to ["admin"] when omitted.
+	Scopes []string `json:"scopes"`
 }
 
 type projectResponse struct {
@@ -31,6 +33,7 @@ type apiKeyResponse struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	Name      string    `json:"name"`
 	Prefix    string    `json:"prefix"`
+	Scopes    []string  `json:"scopes"`
 	Revoked   bool      `json:"revoked"`
 	CreatedAt string    `json:"created_at"`
 	RawKey    string    `json:"raw_key,omitempty"`
@@ -77,7 +80,7 @@ func (h projectHandler) createKey(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return writeError(c, application.ErrInvalidInput)
 	}
-	key, raw, err := h.projects.CreateAPIKey(c.Context(), principalFrom(c), id, req.Name)
+	key, raw, err := h.projects.CreateAPIKey(c.Context(), principalFrom(c), id, req.Name, scopesFromStrings(req.Scopes))
 	if err != nil {
 		return writeError(c, err)
 	}
@@ -129,7 +132,24 @@ func mapAPIKey(key domain.APIKey) apiKeyResponse {
 		ProjectID: key.ProjectID,
 		Name:      key.Name,
 		Prefix:    key.Prefix,
+		Scopes:    scopeStrings(key.Scopes),
 		Revoked:   !key.IsActive(),
 		CreatedAt: formatTime(key.CreatedAt),
 	}
+}
+
+func scopesFromStrings(values []string) []domain.Scope {
+	out := make([]domain.Scope, 0, len(values))
+	for _, value := range values {
+		out = append(out, domain.Scope(value))
+	}
+	return out
+}
+
+func scopeStrings(scopes []domain.Scope) []string {
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		out = append(out, string(scope))
+	}
+	return out
 }

@@ -13,6 +13,7 @@ type APIKey struct {
 	Name           string
 	Prefix         string
 	Hash           []byte
+	Scopes         []Scope
 	LastUsedAt     *time.Time
 	RevokedAt      *time.Time
 	CreatedAt      time.Time

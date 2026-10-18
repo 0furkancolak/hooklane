@@ -58,8 +58,12 @@ func ownedProject(ctx context.Context, projects ProjectRepository, principal Pri
 	return project, nil
 }
 
-func (s *ProjectService) CreateAPIKey(ctx context.Context, principal Principal, projectID uuid.UUID, name string) (domain.APIKey, string, error) {
+func (s *ProjectService) CreateAPIKey(ctx context.Context, principal Principal, projectID uuid.UUID, name string, scopes []domain.Scope) (domain.APIKey, string, error) {
 	name = strings.TrimSpace(name)
+	scopes, err := normalizeScopes(scopes)
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
 	if name == "" || len(name) > maxNameLength {
 		return domain.APIKey{}, "", ErrInvalidInput
 	}
@@ -77,6 +81,7 @@ func (s *ProjectService) CreateAPIKey(ctx context.Context, principal Principal, 
 		Name:           name,
 		Prefix:         prefix,
 		Hash:           hash,
+		Scopes:         scopes,
 	})
 	if err != nil {
 		return domain.APIKey{}, "", err
@@ -111,4 +116,23 @@ func (s *ProjectService) RevokeAPIKey(ctx context.Context, principal Principal, 
 	}
 	revoked.OrganizationID = key.OrganizationID
 	return revoked, nil
+}
+
+// normalizeScopes defaults to admin, drops duplicates and rejects unknown scopes.
+func normalizeScopes(scopes []domain.Scope) ([]domain.Scope, error) {
+	if len(scopes) == 0 {
+		return []domain.Scope{domain.ScopeAdmin}, nil
+	}
+	seen := map[domain.Scope]bool{}
+	out := make([]domain.Scope, 0, len(scopes))
+	for _, scope := range scopes {
+		if !scope.Valid() {
+			return nil, ErrInvalidInput
+		}
+		if !seen[scope] {
+			seen[scope] = true
+			out = append(out, scope)
+		}
+	}
+	return out, nil
 }

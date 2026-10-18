@@ -17,6 +17,7 @@ type ApiKey struct {
 	LastUsedAt pgtype.Timestamptz
 	RevokedAt  pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
+	Scopes     []string
 }
 
 type Delivery struct {

@@ -313,7 +313,7 @@ kbd {
 
 .content {
   width: 100%;
-  max-width: 1120px;
+  max-width: 1560px;
   padding: 20px 40px 64px;
 }
 
@@ -1565,4 +1565,11 @@ ol.attempts {
   .segmented::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* An empty list inside a flush panel is the panel's own content, not a box in a box. */
+.panel-flush > .state {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
 }

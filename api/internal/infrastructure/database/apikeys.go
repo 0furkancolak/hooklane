@@ -17,6 +17,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, key domain.APIKey) (domain.API
 		Name:      key.Name,
 		KeyPrefix: key.Prefix,
 		KeyHash:   key.Hash,
+		Scopes:    scopesToStrings(key.Scopes),
 	})
 	if err != nil {
 		return domain.APIKey{}, err
@@ -31,7 +32,7 @@ func (s *Store) GetAPIKey(ctx context.Context, id uuid.UUID) (domain.APIKey, err
 	if err != nil {
 		return domain.APIKey{}, err
 	}
-	return mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.LastUsedAt, row.RevokedAt, row.CreatedAt), nil
+	return mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.LastUsedAt, row.RevokedAt, row.CreatedAt), nil
 }
 
 func (s *Store) GetByHash(ctx context.Context, hash []byte) (domain.APIKey, error) {
@@ -39,7 +40,7 @@ func (s *Store) GetByHash(ctx context.Context, hash []byte) (domain.APIKey, erro
 	if err != nil {
 		return domain.APIKey{}, err
 	}
-	return mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.LastUsedAt, row.RevokedAt, row.CreatedAt), nil
+	return mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.LastUsedAt, row.RevokedAt, row.CreatedAt), nil
 }
 
 func (s *Store) ListByProject(ctx context.Context, projectID uuid.UUID) ([]domain.APIKey, error) {
@@ -49,7 +50,7 @@ func (s *Store) ListByProject(ctx context.Context, projectID uuid.UUID) ([]domai
 	}
 	keys := make([]domain.APIKey, 0, len(rows))
 	for _, row := range rows {
-		keys = append(keys, mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.LastUsedAt, row.RevokedAt, row.CreatedAt))
+		keys = append(keys, mapAPIKeyRow(row.ID, row.ProjectID, row.OrganizationID, row.Name, row.KeyPrefix, row.KeyHash, row.Scopes, row.LastUsedAt, row.RevokedAt, row.CreatedAt))
 	}
 	return keys, nil
 }
@@ -76,6 +77,7 @@ func mapCreatedAPIKey(row db.ApiKey) domain.APIKey {
 		Name:       row.Name,
 		Prefix:     row.KeyPrefix,
 		Hash:       row.KeyHash,
+		Scopes:     scopesFromStrings(row.Scopes),
 		LastUsedAt: pgTimePtr(row.LastUsedAt),
 		RevokedAt:  pgTimePtr(row.RevokedAt),
 		CreatedAt:  row.CreatedAt.Time,
@@ -86,6 +88,7 @@ func mapAPIKeyRow(
 	id, projectID, organizationID pgtype.UUID,
 	name, prefix string,
 	hash []byte,
+	scopes []string,
 	lastUsedAt, revokedAt, createdAt pgtype.Timestamptz,
 ) domain.APIKey {
 	return domain.APIKey{
@@ -95,8 +98,25 @@ func mapAPIKeyRow(
 		Name:           name,
 		Prefix:         prefix,
 		Hash:           hash,
+		Scopes:         scopesFromStrings(scopes),
 		LastUsedAt:     pgTimePtr(lastUsedAt),
 		RevokedAt:      pgTimePtr(revokedAt),
 		CreatedAt:      createdAt.Time,
 	}
+}
+
+func scopesToStrings(scopes []domain.Scope) []string {
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		out = append(out, string(scope))
+	}
+	return out
+}
+
+func scopesFromStrings(values []string) []domain.Scope {
+	out := make([]domain.Scope, 0, len(values))
+	for _, value := range values {
+		out = append(out, domain.Scope(value))
+	}
+	return out
 }

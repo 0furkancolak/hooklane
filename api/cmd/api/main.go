@@ -14,6 +14,7 @@ import (
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/config"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database"
+	"github.com/0furkancolak/hooklane/api/internal/infrastructure/logging"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/metrics"
 	httpserver "github.com/0furkancolak/hooklane/api/internal/transport/http"
 )
@@ -50,7 +51,7 @@ func run() error {
 		return fmt.Errorf("ENDPOINT_SECRET_KEY: %w", err)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := logging.New(os.Stdout, logging.Format(cfg.LogFormat), logging.ColorEnabled(os.Stdout))
 	slog.SetDefault(logger)
 	ready := func(ctx context.Context) error {
 		if err := pool.Ping(ctx); err != nil {

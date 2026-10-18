@@ -129,6 +129,9 @@ func (r Keys) Create(_ context.Context, key domain.APIKey) (domain.APIKey, error
 	defer r.s.mu.Unlock()
 	key.ID = uuid.New()
 	key.CreatedAt = time.Now().UTC()
+	if len(key.Scopes) == 0 {
+		key.Scopes = []domain.Scope{domain.ScopeAdmin} // the column default
+	}
 	r.s.state.keys = append(r.s.state.keys, key)
 	return key, nil
 }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useApi } from "../../shared/api/context";
-import type { APIKey } from "../../shared/api/types";
+import type { APIKey, Scope } from "../../shared/api/types";
 import { useAsync } from "../../shared/useAsync";
 import { formatTime } from "../../shared/format";
 import { describeError } from "../../shared/errors";
@@ -58,6 +58,7 @@ function CreateAPIKey({ projectId, onCreated }: { projectId: string; onCreated: 
   const api = useApi();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState<Scope>("admin");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -65,7 +66,7 @@ function CreateAPIKey({ projectId, onCreated }: { projectId: string; onCreated: 
     setBusy(true);
     setError(null);
     try {
-      const key = await api.createAPIKey(projectId, name.trim());
+      const key = await api.createAPIKey(projectId, name.trim(), [scope]);
       setName("");
       onCreated({ name: key.name, rawKey: key.raw_key });
     } catch (err) {
@@ -81,6 +82,14 @@ function CreateAPIKey({ projectId, onCreated }: { projectId: string; onCreated: 
         {t("apikeys.nameLabel")}
       </label>
       <input id="api-key-name" required maxLength={200} placeholder={t("apikeys.namePlaceholder")} value={name} onChange={(e) => setName(e.target.value)} />
+      <label htmlFor="api-key-scope" className="sr-only">
+        {t("apikeys.scopeLabel")}
+      </label>
+      <select id="api-key-scope" value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
+        <option value="admin">{t("scope.admin")}</option>
+        <option value="ingest">{t("scope.ingest")}</option>
+        <option value="read">{t("scope.read")}</option>
+      </select>
       <button type="submit" className="button button-primary" disabled={busy || name.trim() === ""}>
         {busy ? t("common.generating") : t("apikeys.generate")}
       </button>
@@ -137,6 +146,7 @@ function APIKeyRow({ apiKey, onChanged }: { apiKey: APIKey; onChanged: () => voi
         <strong>{apiKey.name}</strong>
         <div className="row-meta">
           <code>{apiKey.prefix}…</code>
+          <span className="tag">{(apiKey.scopes ?? ["admin"]).map((s) => t(`scope.${s}.short` as never)).join(", ")}</span>
           <span className={`badge ${apiKey.revoked ? "badge-muted" : "badge-succeeded"}`}>{apiKey.revoked ? t("badge.revoked") : t("badge.active")}</span>
           <span className="muted">{t("projects.created", { date: formatTime(apiKey.created_at) })}</span>
         </div>

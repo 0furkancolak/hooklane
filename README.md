@@ -164,6 +164,16 @@ listed there.
 
 All `/v1` routes require `Authorization: Bearer <key>`. Access is scoped to the key's organization.
 
+Keys also have a **scope**, chosen when the key is created (`"scopes": ["ingest"]`, default `["admin"]`):
+
+| Scope | Allows |
+| --- | --- |
+| `admin` | Everything: manage projects, keys, endpoints, replay, reveal secrets |
+| `ingest` | Only `POST /v1/projects/{id}/events`. Put this one in your application, so a leaked key cannot read data or change endpoints |
+| `read` | `GET` requests (events, deliveries, stats), but not endpoint secrets |
+
+A request outside the key's scope gets `403` with code `insufficient_scope`.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/v1/projects/{id}/endpoints` | Register an endpoint. The response includes the signing `secret`. |

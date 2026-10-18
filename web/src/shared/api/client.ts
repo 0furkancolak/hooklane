@@ -11,6 +11,7 @@ import type {
   IngestedEvent,
   Page,
   Project,
+  Scope,
   SinkRequest,
 } from "./types";
 
@@ -63,8 +64,8 @@ export class ApiClient {
     return this.get<{ api_keys: APIKey[] }>(`/v1/projects/${seg(projectId)}/api-keys`, signal);
   }
 
-  createAPIKey(projectId: string, name: string) {
-    return this.send<CreatedAPIKey>("POST", `/v1/projects/${seg(projectId)}/api-keys`, { name });
+  createAPIKey(projectId: string, name: string, scopes: Scope[] = ["admin"]) {
+    return this.send<CreatedAPIKey>("POST", `/v1/projects/${seg(projectId)}/api-keys`, { name, scopes });
   }
 
   revokeAPIKey(id: string) {

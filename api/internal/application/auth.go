@@ -14,6 +14,12 @@ type Principal struct {
 	APIKeyID       uuid.UUID
 	ProjectID      uuid.UUID
 	OrganizationID uuid.UUID
+	Scopes         []domain.Scope
+}
+
+// Can reports whether the key's scopes permit an action needing required.
+func (p Principal) Can(required domain.Scope) bool {
+	return domain.Allows(p.Scopes, required)
 }
 
 type Authenticator struct {
@@ -48,6 +54,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, rawKey string) (Princi
 		APIKeyID:       key.ID,
 		ProjectID:      key.ProjectID,
 		OrganizationID: key.OrganizationID,
+		Scopes:         key.Scopes,
 	}, nil
 }
 

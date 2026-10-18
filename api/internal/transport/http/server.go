@@ -7,6 +7,7 @@ import (
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/config"
+	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -72,32 +73,33 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	// matched route pattern is known even when a request is rejected; unknown
 	// paths fall through to a plain 404.
 	auth := authMiddleware(svc.Auth)
+	read, ingest, admin := requireScope(domain.ScopeRead), requireScope(domain.ScopeIngest), requireScope(domain.ScopeAdmin)
 	v1 := app.Group("/v1")
 	if limit := cfg.RateLimit; limit.RequestsPerSecond > 0 {
 		v1.Use(rateLimit(newRateLimiter(limit.RequestsPerSecond, limit.Burst, time.Now)))
 	}
-	v1.Post("/projects", auth, projects.create)
-	v1.Get("/projects", auth, projects.list)
-	v1.Get("/projects/:id", auth, projects.get)
-	v1.Post("/projects/:id/api-keys", auth, projects.createKey)
-	v1.Get("/projects/:id/api-keys", auth, projects.listKeys)
-	v1.Post("/api-keys/:id/revoke", auth, projects.revokeKey)
+	v1.Post("/projects", auth, admin, projects.create)
+	v1.Get("/projects", auth, read, projects.list)
+	v1.Get("/projects/:id", auth, read, projects.get)
+	v1.Post("/projects/:id/api-keys", auth, admin, projects.createKey)
+	v1.Get("/projects/:id/api-keys", auth, read, projects.listKeys)
+	v1.Post("/api-keys/:id/revoke", auth, admin, projects.revokeKey)
 
-	v1.Post("/projects/:id/endpoints", auth, endpoints.create)
-	v1.Get("/projects/:id/endpoints", auth, endpoints.list)
-	v1.Get("/endpoints/:id", auth, endpoints.get)
-	v1.Patch("/endpoints/:id", auth, endpoints.update)
-	v1.Get("/endpoints/:id/secret", auth, endpoints.secret)
+	v1.Post("/projects/:id/endpoints", auth, admin, endpoints.create)
+	v1.Get("/projects/:id/endpoints", auth, read, endpoints.list)
+	v1.Get("/endpoints/:id", auth, read, endpoints.get)
+	v1.Patch("/endpoints/:id", auth, admin, endpoints.update)
+	v1.Get("/endpoints/:id/secret", auth, admin, endpoints.secret)
 
-	v1.Post("/projects/:id/events", auth, events.ingest)
-	v1.Get("/projects/:id/events", auth, events.list)
-	v1.Get("/events/:id", auth, events.get)
-	v1.Get("/events/:id/deliveries", auth, deliveries.listForEvent)
-	v1.Get("/projects/:id/deliveries", auth, deliveries.listForProject)
-	v1.Get("/projects/:id/delivery-stats", auth, deliveries.stats)
-	v1.Get("/deliveries/:id", auth, deliveries.get)
-	v1.Get("/deliveries/:id/attempts", auth, deliveries.listAttempts)
-	v1.Post("/deliveries/:id/replay", auth, deliveries.replay)
+	v1.Post("/projects/:id/events", auth, ingest, events.ingest)
+	v1.Get("/projects/:id/events", auth, read, events.list)
+	v1.Get("/events/:id", auth, read, events.get)
+	v1.Get("/events/:id/deliveries", auth, read, deliveries.listForEvent)
+	v1.Get("/projects/:id/deliveries", auth, read, deliveries.listForProject)
+	v1.Get("/projects/:id/delivery-stats", auth, read, deliveries.stats)
+	v1.Get("/deliveries/:id", auth, read, deliveries.get)
+	v1.Get("/deliveries/:id/attempts", auth, read, deliveries.listAttempts)
+	v1.Post("/deliveries/:id/replay", auth, admin, deliveries.replay)
 
 	// Development only, and deliberately missing from openapi.yaml.
 	if cfg.AppEnv == config.AppEnvDevelopment && svc.DevKeys != nil {

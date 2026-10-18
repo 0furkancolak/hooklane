@@ -30,11 +30,14 @@ export type SinkRequest = {
 
 export type CreatedEndpoint = Endpoint & { secret: string };
 
+export type Scope = "admin" | "ingest" | "read";
+
 export type APIKey = {
   id: string;
   project_id: string;
   name: string;
   prefix: string;
+  scopes: Scope[];
   revoked: boolean;
   created_at: string;
 };

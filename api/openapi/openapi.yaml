@@ -117,6 +117,10 @@ paths:
               required: [name]
               properties:
                 name: { type: string, minLength: 1 }
+                scopes:
+                  type: array
+                  items: { $ref: "#/components/schemas/Scope" }
+                  description: Defaults to `["admin"]`.
       responses:
         "201":
           description: Created
@@ -505,14 +509,24 @@ components:
         organization_id: { type: string, format: uuid }
         name: { type: string }
         created_at: { type: string, format: date-time }
+    Scope:
+      type: string
+      enum: [admin, ingest, read]
+      description: |
+        `admin` allows everything. `ingest` allows only `POST /v1/projects/{id}/events`.
+        `read` allows `GET` requests, except revealing endpoint secrets (admin only).
+        A request outside the key's scopes gets `403` with code `insufficient_scope`.
     APIKey:
       type: object
-      required: [id, project_id, name, prefix, revoked, created_at]
+      required: [id, project_id, name, prefix, scopes, revoked, created_at]
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         name: { type: string }
         prefix: { type: string }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/Scope" }
         revoked: { type: boolean }
         created_at: { type: string, format: date-time }
     Endpoint:

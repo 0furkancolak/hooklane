@@ -6,6 +6,7 @@ var (
 	ErrInvalidInput        = errors.New("invalid input")
 	ErrUnauthorized        = errors.New("unauthorized")
 	ErrForbidden           = errors.New("forbidden")
+	ErrInsufficientScope   = errors.New("this API key does not have the scope this action needs")
 	ErrNotFound            = errors.New("not found")
 	ErrAlreadyBootstrapped = errors.New("already bootstrapped")
 	ErrRevoked             = errors.New("api key revoked")

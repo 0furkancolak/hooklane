@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
+	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -22,6 +23,17 @@ func authMiddleware(auth *application.Authenticator) fiber.Handler {
 			return writeError(c, err)
 		}
 		c.Locals(principalKey, principal)
+		return c.Next()
+	}
+}
+
+// requireScope rejects keys whose scopes do not permit the action. It must run
+// after authMiddleware.
+func requireScope(scope domain.Scope) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if !principalFrom(c).Can(scope) {
+			return writeError(c, application.ErrInsufficientScope)
+		}
 		return c.Next()
 	}
 }
