@@ -1,0 +1,38 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - unconvert
+    - unparam
+  exclusions:
+    paths:
+      - internal/infrastructure/database/db
+    rules:
+      # Tests may use the plain net/http helpers and ignore Close errors.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+          - noctx
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+formatters:
+  enable:
+    - gofmt
+    - goimports

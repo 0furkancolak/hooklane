@@ -93,7 +93,7 @@ func TestNextSchedulesRetriesThenDeadLetters(t *testing.T) {
 	if status != domain.DeliveryPending || *delay != 5*time.Second {
 		t.Fatalf("Retry-After above backoff wins: %s %v", status, *delay)
 	}
-	status, delay = p.Next(2, true, time.Hour)
+	_, delay = p.Next(2, true, time.Hour)
 	if *delay != 10*time.Second {
 		t.Fatalf("Retry-After is capped at MaxDelay: %v", *delay)
 	}

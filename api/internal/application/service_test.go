@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -150,7 +151,7 @@ func TestBootstrapAndAuth(t *testing.T) {
 		OrganizationName: "Other",
 		OrganizationSlug: "other",
 		ProjectName:      "default",
-	}); err != ErrAlreadyBootstrapped {
+	}); !errors.Is(err, ErrAlreadyBootstrapped) {
 		t.Fatalf("second bootstrap = %v", err)
 	}
 
@@ -163,7 +164,7 @@ func TestBootstrapAndAuth(t *testing.T) {
 		t.Fatal("principal org mismatch")
 	}
 
-	if _, err := auth.Authenticate(context.Background(), "hlk_invalid"); err != ErrUnauthorized {
+	if _, err := auth.Authenticate(context.Background(), "hlk_invalid"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("invalid key = %v", err)
 	}
 }
@@ -184,7 +185,7 @@ func TestCrossTenantProjectAccess(t *testing.T) {
 	}
 
 	_, err = svc.Get(context.Background(), Principal{OrganizationID: orgA}, projectB.ID)
-	if err != ErrForbidden {
+	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("cross-tenant get = %v", err)
 	}
 }
@@ -210,7 +211,7 @@ func TestRevokedKeyRejected(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(keys)
-	if _, err := auth.Authenticate(context.Background(), raw); err != ErrRevoked {
+	if _, err := auth.Authenticate(context.Background(), raw); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("revoked key = %v", err)
 	}
 }

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
-	"github.com/0furkancolak/hooklane/api/internal/application/memstore"
 	"github.com/0furkancolak/hooklane/api/internal/domain"
+	"github.com/0furkancolak/hooklane/api/internal/testutil/memstore"
 	"github.com/google/uuid"
 )
 

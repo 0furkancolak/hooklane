@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
-	"github.com/0furkancolak/hooklane/api/internal/application/memstore"
 	"github.com/0furkancolak/hooklane/api/internal/config"
 	"github.com/0furkancolak/hooklane/api/internal/domain"
+	"github.com/0furkancolak/hooklane/api/internal/testutil/memstore"
 	"github.com/google/uuid"
 )
 
@@ -83,12 +83,12 @@ func TestEndpointRoutes(t *testing.T) {
 	env := newTestEnv(t, config.AppEnvProduction)
 	base := "/v1/projects/" + env.project.ID.String() + "/endpoints"
 
-	resp, body := env.do(t, "POST", base, `{"url":"http://localhost:9000"}`)
+	resp, _ := env.do(t, "POST", base, `{"url":"http://localhost:9000"}`)
 	if resp.StatusCode != stdhttp.StatusBadRequest {
 		t.Fatalf("http url in production: %d", resp.StatusCode)
 	}
 
-	resp, body = env.do(t, "POST", base, `{"url":"https://example.com/hook"}`)
+	resp, body := env.do(t, "POST", base, `{"url":"https://example.com/hook"}`)
 	if resp.StatusCode != stdhttp.StatusCreated {
 		t.Fatalf("create: %d %v", resp.StatusCode, body)
 	}

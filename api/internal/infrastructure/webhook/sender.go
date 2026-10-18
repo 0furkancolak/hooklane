@@ -106,7 +106,7 @@ func (s *Sender) Send(ctx context.Context, req application.WebhookRequest) appli
 	if err != nil {
 		return application.WebhookResult{Duration: time.Since(started), Err: redactURLError(err)}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, s.cfg.MaxResponseBytes))
 	result := application.WebhookResult{
 		StatusCode:   resp.StatusCode,
@@ -126,7 +126,7 @@ func checkDialAddress(policy application.DestinationPolicy, network, address str
 	}
 	addrPort, err := netip.ParseAddrPort(address)
 	if err != nil {
-		return fmt.Errorf("%w: %v", application.ErrDestinationNotAllowed, err)
+		return fmt.Errorf("%w: %w", application.ErrDestinationNotAllowed, err)
 	}
 	if !policy.AllowAddr(addrPort.Addr()) {
 		return fmt.Errorf("%w: %s", application.ErrDestinationNotAllowed, addrPort.Addr())

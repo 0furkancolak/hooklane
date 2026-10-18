@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -21,16 +22,22 @@ import (
 var version = "dev"
 
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 	if len(cfg.EndpointSecretKey) == 0 {
-		log.Fatal("ENDPOINT_SECRET_KEY is required; generate one with: openssl rand -base64 32")
+		return errors.New("ENDPOINT_SECRET_KEY is required; generate one with: openssl rand -base64 32")
 	}
 	secrets, err := application.NewSecretBox(cfg.EndpointSecretKey)
 	if err != nil {
-		log.Fatalf("ENDPOINT_SECRET_KEY: %v", err)
+		return fmt.Errorf("ENDPOINT_SECRET_KEY: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -38,7 +45,7 @@ func main() {
 
 	pool, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
@@ -65,7 +72,7 @@ func main() {
 		Observer: observer,
 	}, logger)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	if cfg.MetricsAddr != "" {
@@ -91,7 +98,7 @@ func main() {
 	if cfg.RetentionPeriod > 0 {
 		retention, err := application.NewRetention(store, cfg.RetentionPeriod, logger)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		retention.Deleted = observer.EventsPruned
 		go retention.Run(ctx, time.Hour)
@@ -99,7 +106,8 @@ func main() {
 
 	logger.Info("worker started", "version", version, "retention", cfg.RetentionPeriod.String(), "concurrency", cfg.Worker.Concurrency, "lease", cfg.Worker.Lease().String(), "allow_private_networks", cfg.AllowPrivateNetworks())
 	if err := worker.Run(ctx); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	logger.Info("worker stopped")
+	return nil
 }
