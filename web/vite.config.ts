@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/healthz': apiTarget,
       '/readyz': apiTarget,
+      '/openapi.yaml': apiTarget,
       '/v1': apiTarget,
     },
   },

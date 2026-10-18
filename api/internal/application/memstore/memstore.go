@@ -111,6 +111,16 @@ func (r Projects) ListByOrganization(_ context.Context, organizationID uuid.UUID
 	return page(out, limit, offset), nil
 }
 
+// OldestProject returns the first project created, or pgx.ErrNoRows.
+func (s *Store) OldestProject(context.Context) (domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.state.projects) == 0 {
+		return domain.Project{}, pgx.ErrNoRows
+	}
+	return s.state.projects[0], nil
+}
+
 type Keys struct{ s *Store }
 
 func (r Keys) Create(_ context.Context, key domain.APIKey) (domain.APIKey, error) {

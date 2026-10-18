@@ -159,6 +159,46 @@ export class ApiClient {
   }
 }
 
+/**
+ * Calls that run before sign-in, so they carry no API key. The development
+ * routes exist only when the API runs with APP_ENV=development.
+ */
+export const publicApi = {
+  async ready(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const response = await fetch("/readyz", { cache: "no-store", signal });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async developmentMode(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const response = await fetch("/v1/dev", { cache: "no-store", signal });
+      const data = response.ok ? (safeJSON(await response.text()) as { development?: boolean } | undefined) : undefined;
+      return data?.development === true;
+    } catch {
+      return false;
+    }
+  },
+
+  async issueDevelopmentKey(): Promise<CreatedAPIKey> {
+    let response: Response;
+    try {
+      response = await fetch("/v1/dev/api-keys", { method: "POST", cache: "no-store" });
+    } catch {
+      throw new ApiError(0, "network_error", "Could not reach the Hooklane API");
+    }
+    const data = safeJSON(await response.text());
+    if (!response.ok) {
+      const detail = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
+      throw new ApiError(response.status, detail?.code ?? "http_error", detail?.message ?? `Request failed (${response.status})`);
+    }
+    return data as CreatedAPIKey;
+  },
+};
+
 function safeJSON(text: string): unknown {
   try {
     return JSON.parse(text);

@@ -55,15 +55,22 @@ func main() {
 	registry := metrics.NewRegistry()
 
 	store := database.NewStore(pool)
+	projects := application.NewProjectService(store.Projects(), store.Keys())
+	var devKeys *application.DevelopmentKeyService
+	if cfg.AppEnv == config.AppEnvDevelopment {
+		bootstrap := application.NewBootstrapService(store.Orgs(), store.Projects(), store.Keys(), store)
+		devKeys = application.NewDevelopmentKeyService(bootstrap, store, projects)
+	}
 	server := httpserver.NewServer(cfg, httpserver.Services{
 		Auth:     application.NewAuthenticator(store.Keys()),
-		Projects: application.NewProjectService(store.Projects(), store.Keys()),
+		Projects: projects,
 		Endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), secrets, application.EndpointRules{
 			AllowInsecureHTTP: cfg.AllowInsecureHTTP(),
 			Destinations:      application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()},
 		}),
 		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),
 		Deliveries: application.NewDeliveryService(store.Projects(), store.Events(), store.Deliveries()),
+		DevKeys:    devKeys,
 	},
 		httpserver.WithLogger(logger),
 		httpserver.WithRequestObserver(metrics.NewHTTP(registry)),

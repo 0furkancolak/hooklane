@@ -14,3 +14,9 @@ FROM projects
 WHERE organization_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: GetOldestProject :one
+SELECT id, organization_id, name, created_at
+FROM projects
+ORDER BY created_at, id
+LIMIT 1;

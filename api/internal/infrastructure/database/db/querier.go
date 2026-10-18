@@ -39,6 +39,7 @@ type Querier interface {
 	GetEndpoint(ctx context.Context, id pgtype.UUID) (GetEndpointRow, error)
 	GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, error)
 	GetEventByIdempotencyKey(ctx context.Context, arg GetEventByIdempotencyKeyParams) (GetEventByIdempotencyKeyRow, error)
+	GetOldestProject(ctx context.Context) (Project, error)
 	GetOrganization(ctx context.Context, id pgtype.UUID) (Organization, error)
 	GetProject(ctx context.Context, id pgtype.UUID) (Project, error)
 	InsertDeliveryAttempt(ctx context.Context, arg InsertDeliveryAttemptParams) error

@@ -276,7 +276,7 @@ Start everything with one command (needs Docker, Go and Node.js):
 make dev
 ```
 
-It creates `.env` from `.env.example` with a generated `ENDPOINT_SECRET_KEY` if missing, starts PostgreSQL, applies migrations, and runs the API, the worker and the dashboard with prefixed output. On an empty database it also bootstraps a development organization and saves its API key to `.dev/api-key` (readable only by you). Open http://127.0.0.1:5173 and sign in with that key. Ctrl+C stops the processes; PostgreSQL keeps running until `make db-down`.
+It creates `.env` from `.env.example` with a generated `ENDPOINT_SECRET_KEY` if missing, starts PostgreSQL, applies migrations, and runs the API, the worker and the dashboard with prefixed output. On an empty database it also bootstraps a development organization and saves its API key to `.dev/api-key` (readable only by you). Open http://127.0.0.1:5173 and sign in with that key. If the database already had an organization, the sign-in screen offers a "Generate a development key" button instead. That button exists only with `APP_ENV=development` (which `make dev` sets), only answers requests from the machine itself, and is not part of the OpenAPI document. Ctrl+C stops the processes; PostgreSQL keeps running until `make db-down`.
 
 The API uses `PORT` (default 8080), or the next free port if it is taken. Variables set on the command line win over `.env`, for example `PORT=9000 make dev`. The local stack always runs with `APP_ENV=development`.
 
