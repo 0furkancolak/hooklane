@@ -3,6 +3,8 @@ import { href, useRoute, type Route } from "../shared/router";
 import { useAsync } from "../shared/useAsync";
 import { productName } from "../shared/product";
 import { Empty } from "../shared/ui/States";
+import { Icon, type IconName } from "../shared/ui/Icon";
+import { useTheme } from "../shared/theme";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { OverviewPage } from "../features/projects/OverviewPage";
 import { EndpointsPage } from "../features/endpoints/EndpointsPage";
@@ -15,45 +17,99 @@ import { DeliveryDetailPage } from "../features/deliveries/DeliveryDetailPage";
 export function Layout({ onSignOut }: { onSignOut: () => void }) {
   const route = useRoute();
   const projectId = "projectId" in route ? route.projectId : null;
+  const [theme, toggleTheme] = useTheme();
+  const api = useApi();
+  const [project] = useAsync((signal) => (projectId ? api.getProject(projectId, signal) : Promise.resolve(null)), [api, projectId]);
+  const projectName = project.status === "ready" && project.data ? project.data.name : null;
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <a className="brand" href={href("projects")}>
+          <span className="brand-mark">
+            <Icon name="bolt" size={16} />
+          </span>
           {productName}
         </a>
-        {projectId && <ProjectNav projectId={projectId} route={route} />}
-        <button type="button" className="button signout" onClick={onSignOut}>
-          Sign out
-        </button>
+        {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <p className="nav-hint">Pick a project to see its endpoints, events and deliveries.</p>}
+        <div className="sidebar-foot">
+          <button type="button" className="button button-ghost" onClick={toggleTheme}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} />
+            {theme === "dark" ? "Light theme" : "Dark theme"}
+          </button>
+          <button type="button" className="button button-ghost signout" onClick={onSignOut}>
+            <Icon name="logout" />
+            Sign out
+          </button>
+        </div>
       </aside>
-      <main className="content">
-        <Page route={route} />
-      </main>
+      <div className="main">
+        <Topbar route={route} projectId={projectId} projectName={projectName} />
+        <main className="content">
+          <Page route={route} />
+        </main>
+      </div>
     </div>
   );
 }
 
-function ProjectNav({ projectId, route }: { projectId: string; route: Route }) {
-  const api = useApi();
-  const [project] = useAsync((signal) => api.getProject(projectId, signal), [api, projectId]);
-  const items: { label: string; target: string; active: boolean }[] = [
-    { label: "Overview", target: href("projects", projectId), active: route.name === "overview" },
-    { label: "Endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
-    { label: "Events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
-    { label: "Deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
-    { label: "API keys", target: href("projects", projectId, "api-keys"), active: route.name === "api_keys" },
+const pageTitles: Record<Route["name"], string> = {
+  projects: "Projects",
+  overview: "Overview",
+  endpoints: "Endpoints",
+  api_keys: "API keys",
+  events: "Events",
+  event: "Event",
+  deliveries: "Deliveries",
+  delivery: "Delivery",
+  not_found: "Not found",
+};
+
+function Topbar({ route, projectId, projectName }: { route: Route; projectId: string | null; projectName: string | null }) {
+  return (
+    <header className="topbar">
+      <nav aria-label="Breadcrumb" className="breadcrumb">
+        <a href={href("projects")}>Projects</a>
+        {projectId && (
+          <>
+            <span aria-hidden="true">/</span>
+            <a href={href("projects", projectId)}>{projectName ?? "Project"}</a>
+          </>
+        )}
+        {route.name !== "projects" && route.name !== "overview" && (
+          <>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">{pageTitles[route.name]}</span>
+          </>
+        )}
+      </nav>
+    </header>
+  );
+}
+
+function ProjectNav({ projectId, projectName, route }: { projectId: string; projectName: string | null; route: Route }) {
+  const items: { label: string; icon: IconName; target: string; active: boolean }[] = [
+    { label: "Overview", icon: "overview", target: href("projects", projectId), active: route.name === "overview" },
+    { label: "Endpoints", icon: "endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
+    { label: "Events", icon: "events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
+    { label: "Deliveries", icon: "deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
+    { label: "API keys", icon: "key", target: href("projects", projectId, "api-keys"), active: route.name === "api_keys" },
   ];
   return (
-    <nav aria-label="Project">
+    <nav aria-label="Project" className="project-nav">
       <a className="project-switch" href={href("projects")} title="All projects">
-        {project.status === "ready" ? project.data.name : "Project"}
-        <span className="muted"> ⇄</span>
+        <span className="project-avatar">{projectName ? projectName.slice(0, 1).toUpperCase() : "·"}</span>
+        <span className="project-switch-text">
+          <small>Project</small>
+          {projectName ?? "Loading…"}
+        </span>
+        <Icon name="swap" size={14} />
       </a>
       <ul className="nav">
         {items.map((item) => (
           <li key={item.label}>
             <a href={item.target} aria-current={item.active ? "page" : undefined}>
+              <Icon name={item.icon} />
               {item.label}
             </a>
           </li>
