@@ -13,6 +13,7 @@ include breaking changes, which are called out.
 
 ### Added
 
+- One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
 - The dashboard is available in English and Turkish (switch in the sidebar or on the sign-in screen; it follows the browser language at first and remembers the choice).
 - Lists share one filter bar and pagination: filters, page size and page are kept in the URL, with Previous/Next, the visible range and a rows-per-page selector. Deliveries can be filtered by status and endpoint, endpoints by state and events by type.
 - Playground: a guided page in every project that creates an endpoint, sends a test event and shows its deliveries, attempts and the request the receiver got. With `APP_ENV=development` it has a built-in receiver (`/v1/dev/sink/{token}`, which can simulate failures with `?status=`), and the dashboard can create projects.

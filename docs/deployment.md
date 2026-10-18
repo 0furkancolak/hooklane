@@ -236,6 +236,7 @@ startup with a message naming the variable.
 | `RETENTION_PERIOD` | `720h` | worker, admin | Delete finished events older than this; `0` disables. Minimum `1h`. |
 | `RATE_LIMIT_RPS` | `50` | api | Sustained requests per second per client address on `/v1`; `0` disables. Answers `429` with `Retry-After`. Each replica keeps its own counters, and forwarded headers are not trusted, so behind a reverse proxy limit there as well. |
 | `RATE_LIMIT_BURST` | `200` | api | Requests a client may send at once before `RATE_LIMIT_RPS` applies. |
+| `LOG_FORMAT` | `json` (`pretty` when `APP_ENV=development`) | api, worker | `json` for log collectors, `pretty` for coloured one-line logs in a terminal. `LOG_COLOR=1` forces colour, `NO_COLOR` disables it. |
 
 ### API
 
