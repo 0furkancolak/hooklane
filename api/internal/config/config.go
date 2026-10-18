@@ -34,7 +34,16 @@ type Config struct {
 	// automatic deletion.
 	RetentionPeriod time.Duration
 
+	RateLimit RateLimitConfig
+
 	Worker WorkerConfig
+}
+
+// RateLimitConfig bounds requests per client address on /v1. Zero
+// RequestsPerSecond disables limiting.
+type RateLimitConfig struct {
+	RequestsPerSecond float64
+	Burst             int
 }
 
 type WorkerConfig struct {
@@ -99,6 +108,10 @@ func Load() (Config, error) {
 	}
 	cfg.RetentionPeriod = retention
 
+	if cfg.RateLimit, err = loadRateLimit(); err != nil {
+		return Config{}, err
+	}
+
 	worker, err := loadWorker()
 	if err != nil {
 		return Config{}, err
@@ -106,6 +119,19 @@ func Load() (Config, error) {
 	cfg.Worker = worker
 
 	return cfg, nil
+}
+
+func loadRateLimit() (RateLimitConfig, error) {
+	var r RateLimitConfig
+	rps, err := strconv.ParseFloat(getenv("RATE_LIMIT_RPS", "50"), 64)
+	if err != nil || rps < 0 || rps > 100000 {
+		return r, fmt.Errorf("RATE_LIMIT_RPS must be a number between 0 and 100000, where 0 disables limiting")
+	}
+	r.RequestsPerSecond = rps
+	if r.Burst, err = getInt("RATE_LIMIT_BURST", 200, 1, 1000000); err != nil {
+		return r, err
+	}
+	return r, nil
 }
 
 func loadWorker() (WorkerConfig, error) {

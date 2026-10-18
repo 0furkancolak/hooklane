@@ -7,6 +7,8 @@ export function describeError(error: Error): string {
         return "Could not reach the Hooklane API. Check that it is running.";
       case 403:
         return "This API key's organization does not own that resource.";
+      case 429:
+        return "Too many requests. Wait a moment and try again.";
       case 404:
         return "Not found.";
       default:

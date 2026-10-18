@@ -103,3 +103,35 @@ func TestLoadWorkerConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRateLimit(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://hooklane:dev@localhost:5432/hooklane?sslmode=disable")
+
+	t.Setenv("RATE_LIMIT_RPS", "")
+	t.Setenv("RATE_LIMIT_BURST", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RateLimit.RequestsPerSecond != 50 || cfg.RateLimit.Burst != 200 {
+		t.Fatalf("defaults = %+v", cfg.RateLimit)
+	}
+
+	t.Setenv("RATE_LIMIT_RPS", "0")
+	if cfg, err = Load(); err != nil || cfg.RateLimit.RequestsPerSecond != 0 {
+		t.Fatalf("0 should disable limiting: %+v, %v", cfg.RateLimit, err)
+	}
+
+	for _, bad := range []string{"-1", "fast", "1e9"} {
+		t.Setenv("RATE_LIMIT_RPS", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("RATE_LIMIT_RPS=%q was accepted", bad)
+		}
+	}
+
+	t.Setenv("RATE_LIMIT_RPS", "10")
+	t.Setenv("RATE_LIMIT_BURST", "0")
+	if _, err := Load(); err == nil {
+		t.Fatal("RATE_LIMIT_BURST=0 was accepted")
+	}
+}

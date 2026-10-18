@@ -9,6 +9,7 @@ include breaking changes, which are called out.
 
 ### Added
 
+- Rate limiting on `/v1`: a token bucket per client address (`RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`; `0` disables) that answers `429` with `Retry-After`.
 - Redesigned dashboard: card layout, lime accent, icon navigation, breadcrumbs, a delivery health overview with recent deliveries, and a light/dark theme switch.
 - `make check` runs gofmt, golangci-lint, the TypeScript typecheck, oxlint, all tests and govulncheck; CI runs the same checks.
 - `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.

@@ -73,6 +73,9 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	// paths fall through to a plain 404.
 	auth := authMiddleware(svc.Auth)
 	v1 := app.Group("/v1")
+	if limit := cfg.RateLimit; limit.RequestsPerSecond > 0 {
+		v1.Use(rateLimit(newRateLimiter(limit.RequestsPerSecond, limit.Burst, time.Now)))
+	}
 	v1.Post("/projects", auth, projects.create)
 	v1.Get("/projects", auth, projects.list)
 	v1.Get("/projects/:id", auth, projects.get)
