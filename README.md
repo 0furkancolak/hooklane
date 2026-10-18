@@ -1,9 +1,27 @@
-# Hooklane
+<h1 align="center">Hooklane</h1>
 
-Open-source, self-hostable webhook delivery. Your application sends events to
-Hooklane's API; Hooklane signs them, delivers them to your customers'
-endpoints, retries failures with backoff, dead-letters what cannot be
-delivered and lets you replay it, all on PostgreSQL alone.
+<p align="center">
+  <strong>Open-source, self-hostable webhook delivery.</strong><br />
+  Send an event to one API. Hooklane signs it, delivers it, retries failures,<br />
+  dead-letters what cannot be delivered and lets you replay it, on PostgreSQL alone.
+</p>
+
+<p align="center">
+  <a href="https://github.com/0furkancolak/hooklane/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/0furkancolak/hooklane/actions/workflows/ci.yaml/badge.svg" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.27-00ADD8.svg" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-17-336791.svg" />
+</p>
+
+<p align="center">
+  <img alt="Hooklane dashboard overview" src="docs/screenshots/overview-dark.png" width="900" />
+</p>
+
+## Why Hooklane
+
+Sending webhooks reliably means signing, retrying with backoff, keeping
+history, protecting against SSRF and giving customers a way to replay. Hooklane
+is that part, as one container and one database.
 
 - Signed deliveries compatible with [Standard Webhooks](https://www.standardwebhooks.com)
 - Idempotent event ingestion
@@ -11,8 +29,21 @@ delivered and lets you replay it, all on PostgreSQL alone.
 - Attempt history with status codes, response excerpts and errors
 - SSRF protection that checks the resolved address of every connection
 - Multi-tenant organizations, projects and API keys
-- Dashboard, Prometheus metrics, health and readiness probes, JSON logs
+- Dashboard (dark and light), Prometheus metrics, health and readiness probes, JSON logs
 - One container image; no Redis, Kafka or other infrastructure
+
+```mermaid
+flowchart LR
+    App["Your app"] -- "POST /v1/.../events" --> API["Hooklane API"]
+    API -- "event + deliveries<br/>(one transaction)" --> PG[("PostgreSQL")]
+    PG -- "SKIP LOCKED" --> W["Worker"]
+    W -- "signed POST,<br/>retries, backoff" --> R["Customer endpoint"]
+    W -- "attempts, status" --> PG
+```
+
+## Contents
+
+[Quick start](#quick-start) · [Receiving webhooks](#receiving-webhooks) · [Delivery guarantees](#delivery-guarantees) · [API overview](#api-overview) · [Dashboard](#dashboard) · [Operations](#operations) · [Security](#security) · [Development](#development) · [Contributing](#contributing-and-license)
 
 ## Quick start
 
@@ -177,6 +208,14 @@ curl -X POST localhost:8090/v1/projects/$PROJECT_ID/events \
 - Keys stay reserved for as long as the event is retained.
 
 ## Dashboard
+
+| Sign in | Deliveries |
+| --- | --- |
+| ![Sign-in screen](docs/screenshots/sign-in.png) | ![Deliveries list](docs/screenshots/deliveries-dark.png) |
+
+The light theme follows your system setting and can be switched in the sidebar.
+
+![Overview, light theme](docs/screenshots/overview-light.png)
 
 The dashboard signs in with an API key and only calls the documented `/v1` API, so it can see exactly what the key's organization can see.
 
