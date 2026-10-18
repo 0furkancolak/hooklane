@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hooklane-worker
+  labels:
+    app.kubernetes.io/name: hooklane
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hooklane
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hooklane
+        app.kubernetes.io/component: worker
+    spec:
+      automountServiceAccountToken: false
+      # Workers drain in-flight deliveries for WORKER_SHUTDOWN_TIMEOUT (20s in
+      # hooklane-config) after SIGTERM. Keep this at least 10s above it, or the
+      # kubelet kills a worker that is still draining.
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: hooklane
+              app.kubernetes.io/component: worker
+      containers:
+        - name: worker
+          image: ghcr.io/0furkancolak/hooklane:latest
+          args: ["hooklane-worker"]
+          ports:
+            - name: metrics
+              containerPort: 9101
+          env:
+            - name: METRICS_ADDR
+              value: "0.0.0.0:9101"
+          envFrom:
+            - configMapRef:
+                name: hooklane-config
+            - secretRef:
+                name: hooklane-secrets
+          readinessProbe:
+            httpGet: { path: /readyz, port: metrics }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }

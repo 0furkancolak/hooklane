@@ -1,0 +1,47 @@
+# Applies pending migrations and exits. Run it (and wait for it) before
+# rolling a new API/worker version. A Job's pod template is immutable, so for
+# a new release delete the old Job first:
+#   kubectl -n hooklane delete job hooklane-migrate --ignore-not-found
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hooklane-migrate
+  labels:
+    app.kubernetes.io/name: hooklane
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hooklane
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/0furkancolak/hooklane:latest
+          args: ["hooklane-admin", "migrate", "up"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hooklane-secrets
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }

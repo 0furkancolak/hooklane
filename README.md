@@ -47,6 +47,10 @@ flowchart LR
 
 ## Quick start
 
+To install Hooklane on a server, or to run several API and worker replicas, use
+the [installer](docs/deployment.md#install-in-one-command)
+(`scripts/install.sh`). The steps below build from source for a first look.
+
 Requirements: Docker with Compose, `openssl` and `curl`.
 To work on Hooklane itself, see [Development](#development) for `make dev`.
 

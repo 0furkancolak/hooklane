@@ -1,0 +1,32 @@
+# Hooklane on Kubernetes. PostgreSQL is not included: point DATABASE_URL in the
+# hooklane-secrets Secret at a managed or existing instance.
+#
+# Usage and the migration order are described in docs/deployment.md
+# ("Kubernetes"). The Secret is deliberately not listed here: create it first
+# (see secret.example.yaml) so placeholder values can never be applied.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hooklane
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - migrate-job.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - worker-deployment.yaml
+  - pdb.yaml
+  - hpa.yaml
+  # Optional: edit the host and TLS secret in ingress.yaml, then uncomment.
+  # - ingress.yaml
+
+# Pin the release here (or run `kustomize edit set image`).
+images:
+  - name: ghcr.io/0furkancolak/hooklane
+    newTag: latest
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: hooklane
+    includeSelectors: false

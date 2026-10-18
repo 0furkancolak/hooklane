@@ -1,0 +1,168 @@
+# Hooklane production stack for one Docker host.
+#
+#   client -> proxy (nginx) -> api (any number of replicas) -> postgres
+#                              worker (any number of replicas) -> postgres
+#
+# scripts/install.sh copies this file and nginx.conf.template into the deploy
+# directory next to a generated .env. To run it by hand, create .env with at
+# least POSTGRES_PASSWORD and ENDPOINT_SECRET_KEY (see deploy/env.example), then:
+#
+#   docker compose up -d
+#   docker compose up -d --scale api=3 --scale worker=3
+#
+# Only the proxy publishes a port, so api and worker scale freely. TLS is not
+# handled here: put your own TLS terminator in front of the proxy, or change
+# HOOKLANE_BIND to expose the proxy directly.
+
+x-hooklane-env: &hooklane-env
+  APP_ENV: ${HOOKLANE_APP_ENV:-production}
+  # An external PostgreSQL: set DATABASE_URL in .env (and drop the postgres
+  # service). Otherwise the bundled one is used.
+  DATABASE_URL: ${DATABASE_URL:-postgres://hooklane:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/hooklane?sslmode=disable}
+  ENDPOINT_SECRET_KEY: ${ENDPOINT_SECRET_KEY:?set ENDPOINT_SECRET_KEY in .env}
+  RETENTION_PERIOD: ${RETENTION_PERIOD:-720h}
+
+x-hooklane-image: &hooklane-image
+  image: ${HOOKLANE_IMAGE:-ghcr.io/0furkancolak/hooklane}:${HOOKLANE_VERSION:-latest}
+  pull_policy: ${HOOKLANE_PULL_POLICY:-missing}
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  postgres:
+    <<: *hardened
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hooklane
+      POSTGRES_USER: hooklane
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unused-with-external-database}
+    volumes:
+      - hooklane_postgres:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    # The entrypoint starts as root to fix volume ownership and then drops to
+    # the postgres user, so it needs these capabilities back.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hooklane -d hooklane"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1g }
+
+  # Runs once per `up`, applies pending migrations and exits. api and worker
+  # wait for it, so a scaled start never races on the schema.
+  migrate:
+    <<: [*hooklane-image, *hardened]
+    command: ["hooklane-admin", "migrate", "up"]
+    restart: "no"
+    environment: *hooklane-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
+
+  api:
+    <<: [*hooklane-image, *hardened]
+    command: ["hooklane-api"]
+    restart: unless-stopped
+    environment:
+      <<: *hooklane-env
+      PORT: "8080"
+      METRICS_ADDR: 0.0.0.0:9101
+      # Behind the proxy every request arrives from the proxy's address, so a
+      # per-client limit here would be one shared bucket. Limit in the proxy
+      # (HOOKLANE_RATE_LIMIT_RPS) instead.
+      RATE_LIMIT_RPS: ${HOOKLANE_API_RATE_LIMIT_RPS:-0}
+      RATE_LIMIT_BURST: ${HOOKLANE_API_RATE_LIMIT_BURST:-200}
+    expose: ["8080", "9101"]
+    tmpfs: [/tmp]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    stop_grace_period: 20s
+    deploy:
+      replicas: ${HOOKLANE_API_REPLICAS:-1}
+      resources:
+        limits: { cpus: "1.0", memory: 256m }
+
+  worker:
+    <<: [*hooklane-image, *hardened]
+    command: ["hooklane-worker"]
+    restart: unless-stopped
+    environment:
+      <<: *hooklane-env
+      METRICS_ADDR: 0.0.0.0:9101
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      WORKER_SHUTDOWN_TIMEOUT: ${WORKER_SHUTDOWN_TIMEOUT:-20s}
+      WORKER_REQUEST_TIMEOUT: ${WORKER_REQUEST_TIMEOUT:-15s}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-10}
+    expose: ["9101"]
+    tmpfs: [/tmp]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9101/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    # Must exceed WORKER_SHUTDOWN_TIMEOUT so Docker does not SIGKILL a worker
+    # that is still draining. Keep it at least 10s above that value.
+    stop_grace_period: ${WORKER_STOP_GRACE_PERIOD:-30s}
+    deploy:
+      replicas: ${HOOKLANE_WORKER_REPLICAS:-1}
+      resources:
+        limits: { cpus: "1.0", memory: 256m }
+
+  proxy:
+    <<: *hardened
+    image: nginxinc/nginx-unprivileged:1.29-alpine
+    restart: unless-stopped
+    environment:
+      HOOKLANE_RATE_LIMIT_RPS: ${HOOKLANE_RATE_LIMIT_RPS:-50}
+      HOOKLANE_RATE_LIMIT_BURST: ${HOOKLANE_RATE_LIMIT_BURST:-200}
+    ports:
+      - "${HOOKLANE_BIND:-127.0.0.1}:${HOOKLANE_PORT:-8090}:8080"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    tmpfs:
+      - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=755
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 128m }
+
+volumes:
+  hooklane_postgres:
