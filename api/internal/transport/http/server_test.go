@@ -117,6 +117,7 @@ func TestProjectRoutesEnforceAuthAndTenant(t *testing.T) {
 		Name:           "test",
 		Prefix:         prefix,
 		Hash:           hash,
+		Scopes:         []domain.Scope{domain.ScopeAdmin},
 	}); err != nil {
 		t.Fatal(err)
 	}

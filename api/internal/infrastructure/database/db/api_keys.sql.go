@@ -12,9 +12,9 @@ import (
 )
 
 const createAPIKey = `-- name: CreateAPIKey :one
-INSERT INTO api_keys (project_id, name, key_prefix, key_hash)
-VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, name, key_prefix, key_hash, last_used_at, revoked_at, created_at
+INSERT INTO api_keys (project_id, name, key_prefix, key_hash, scopes)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, name, key_prefix, key_hash, last_used_at, revoked_at, created_at, scopes
 `
 
 type CreateAPIKeyParams struct {
@@ -22,6 +22,7 @@ type CreateAPIKeyParams struct {
 	Name      string
 	KeyPrefix string
 	KeyHash   []byte
+	Scopes    []string
 }
 
 func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		arg.Name,
 		arg.KeyPrefix,
 		arg.KeyHash,
+		arg.Scopes,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -41,12 +43,13 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		&i.LastUsedAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.Scopes,
 	)
 	return i, err
 }
 
 const getAPIKey = `-- name: GetAPIKey :one
-SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash,
+SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash, k.scopes,
        k.last_used_at, k.revoked_at, k.created_at
 FROM api_keys k
 JOIN projects p ON p.id = k.project_id
@@ -60,6 +63,7 @@ type GetAPIKeyRow struct {
 	Name           string
 	KeyPrefix      string
 	KeyHash        []byte
+	Scopes         []string
 	LastUsedAt     pgtype.Timestamptz
 	RevokedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
@@ -75,6 +79,7 @@ func (q *Queries) GetAPIKey(ctx context.Context, id pgtype.UUID) (GetAPIKeyRow, 
 		&i.Name,
 		&i.KeyPrefix,
 		&i.KeyHash,
+		&i.Scopes,
 		&i.LastUsedAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
@@ -83,7 +88,7 @@ func (q *Queries) GetAPIKey(ctx context.Context, id pgtype.UUID) (GetAPIKeyRow, 
 }
 
 const getAPIKeyByHash = `-- name: GetAPIKeyByHash :one
-SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash,
+SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash, k.scopes,
        k.last_used_at, k.revoked_at, k.created_at
 FROM api_keys k
 JOIN projects p ON p.id = k.project_id
@@ -97,6 +102,7 @@ type GetAPIKeyByHashRow struct {
 	Name           string
 	KeyPrefix      string
 	KeyHash        []byte
+	Scopes         []string
 	LastUsedAt     pgtype.Timestamptz
 	RevokedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
@@ -112,6 +118,7 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash []byte) (GetAPIKe
 		&i.Name,
 		&i.KeyPrefix,
 		&i.KeyHash,
+		&i.Scopes,
 		&i.LastUsedAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
@@ -120,7 +127,7 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash []byte) (GetAPIKe
 }
 
 const listAPIKeysByProject = `-- name: ListAPIKeysByProject :many
-SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash,
+SELECT k.id, k.project_id, p.organization_id, k.name, k.key_prefix, k.key_hash, k.scopes,
        k.last_used_at, k.revoked_at, k.created_at
 FROM api_keys k
 JOIN projects p ON p.id = k.project_id
@@ -135,6 +142,7 @@ type ListAPIKeysByProjectRow struct {
 	Name           string
 	KeyPrefix      string
 	KeyHash        []byte
+	Scopes         []string
 	LastUsedAt     pgtype.Timestamptz
 	RevokedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
@@ -156,6 +164,7 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 			&i.Name,
 			&i.KeyPrefix,
 			&i.KeyHash,
+			&i.Scopes,
 			&i.LastUsedAt,
 			&i.RevokedAt,
 			&i.CreatedAt,
@@ -174,7 +183,7 @@ const revokeAPIKey = `-- name: RevokeAPIKey :one
 UPDATE api_keys
 SET revoked_at = now()
 WHERE id = $1 AND revoked_at IS NULL
-RETURNING id, project_id, name, key_prefix, key_hash, last_used_at, revoked_at, created_at
+RETURNING id, project_id, name, key_prefix, key_hash, last_used_at, revoked_at, created_at, scopes
 `
 
 func (q *Queries) RevokeAPIKey(ctx context.Context, id pgtype.UUID) (ApiKey, error) {
@@ -189,6 +198,7 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, id pgtype.UUID) (ApiKey, err
 		&i.LastUsedAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.Scopes,
 	)
 	return i, err
 }

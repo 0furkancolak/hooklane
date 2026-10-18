@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 // Hash routes keep the dashboard deployable as static files behind any server.
 export type Route =
   | { name: "projects" }
+  | { name: "portal"; token: string }
   | { name: "overview"; projectId: string }
   | { name: "endpoints"; projectId: string; query: URLSearchParams }
   | { name: "playground"; projectId: string }
@@ -18,6 +19,9 @@ export function parseRoute(hash: string): Route {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   if (parts.length === 0 || (parts.length === 1 && parts[0] === "projects")) {
     return { name: "projects" };
+  }
+  if (parts[0] === "portal" && parts.length === 2) {
+    return { name: "portal", token: parts[1] };
   }
   if (parts[0] !== "projects" || !parts[1]) {
     return { name: "not_found" };

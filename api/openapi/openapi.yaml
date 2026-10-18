@@ -28,6 +28,7 @@ tags:
   - name: API keys
   - name: Endpoints
   - name: Events
+  - name: Portal
   - name: Deliveries
   - name: Health
 
@@ -117,6 +118,10 @@ paths:
               required: [name]
               properties:
                 name: { type: string, minLength: 1 }
+                scopes:
+                  type: array
+                  items: { $ref: "#/components/schemas/Scope" }
+                  description: Defaults to `["admin"]`.
       responses:
         "201":
           description: Created
@@ -281,6 +286,10 @@ paths:
               properties:
                 event_type: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" }
                 payload: { type: object, description: "Any JSON object, up to 256 KiB" }
+                customer:
+                  type: string
+                  pattern: "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"
+                  description: Send the event only to endpoints of this customer. Without it the event goes only to endpoints that have no customer.
       responses:
         "202": { $ref: "#/components/responses/Ingested" }
         "200": { $ref: "#/components/responses/Ingested" }
@@ -430,12 +439,179 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
 
+  /v1/projects/{id}/portal-links:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Portal]
+      summary: Create a portal link for one customer (admin scope)
+      description: |
+        The returned token lets that customer register and manage their own
+        endpoints and see their own deliveries on `/v1/portal/*`, or in the
+        dashboard at `/#/portal/{token}`. It is shown once and stops working at
+        `expires_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer]
+              properties:
+                customer: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$" }
+                ttl_seconds: { type: integer, minimum: 60, maximum: 604800, default: 86400 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, customer, expires_at, path]
+                properties:
+                  token: { type: string, examples: ["hlp_<48 hex characters>"] }
+                  customer: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  path: { type: string, description: "Dashboard route that opens the portal" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/me:
+    get:
+      tags: [Portal]
+      summary: Who this portal token is for
+      security: [{ portalToken: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer: { type: string }
+                  project_name: { type: string }
+                  expires_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/endpoints:
+    get:
+      tags: [Portal]
+      summary: List the customer's endpoints
+      security: [{ portalToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { name: enabled, in: query, schema: { type: boolean } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Portal]
+      summary: Register an endpoint for the customer; the signing secret is returned (at most 25 per customer)
+      security: [{ portalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Endpoint" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/endpoints/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Portal]
+      summary: Read one of the customer's endpoints
+      security: [{ portalToken: [] }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Endpoint" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Portal]
+      summary: Change the URL or enabled flag of one of the customer's endpoints
+      security: [{ portalToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string, format: uri }
+                enabled: { type: boolean }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Endpoint" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/endpoints/{id}/secret:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Portal]
+      summary: Reveal the signing secret of one of the customer's endpoints
+      security: [{ portalToken: [] }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { secret: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/deliveries:
+    get:
+      tags: [Portal]
+      summary: List deliveries to the customer's endpoints
+      security: [{ portalToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/DeliveryStatus" } }
+        - { name: endpoint_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/deliveries/{id}/attempts:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Portal]
+      summary: Attempt history of one of the customer's deliveries
+      security: [{ portalToken: [] }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/portal/deliveries/{id}/replay:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Portal]
+      summary: Replay one of the customer's finished deliveries
+      security: [{ portalToken: [] }]
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
 components:
   securitySchemes:
     apiKey:
       type: http
       scheme: bearer
       description: A Hooklane API key (`hlk_` followed by 64 hex characters).
+    portalToken:
+      type: http
+      scheme: bearer
+      description: A customer portal token (`hlp_` followed by 48 hex characters), issued with `POST /v1/projects/{id}/portal-links`. Valid only on `/v1/portal/*`.
   parameters:
     Id:
       name: id
@@ -505,14 +681,24 @@ components:
         organization_id: { type: string, format: uuid }
         name: { type: string }
         created_at: { type: string, format: date-time }
+    Scope:
+      type: string
+      enum: [admin, ingest, read]
+      description: |
+        `admin` allows everything. `ingest` allows only `POST /v1/projects/{id}/events`.
+        `read` allows `GET` requests, except revealing endpoint secrets (admin only).
+        A request outside the key's scopes gets `403` with code `insufficient_scope`.
     APIKey:
       type: object
-      required: [id, project_id, name, prefix, revoked, created_at]
+      required: [id, project_id, name, prefix, scopes, revoked, created_at]
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         name: { type: string }
         prefix: { type: string }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/Scope" }
         revoked: { type: boolean }
         created_at: { type: string, format: date-time }
     Endpoint:
@@ -523,6 +709,7 @@ components:
         project_id: { type: string, format: uuid }
         url: { type: string, format: uri }
         enabled: { type: boolean }
+        customer: { type: [string, "null"], description: "When set, the endpoint only receives events sent for this customer" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     Event:
@@ -534,6 +721,7 @@ components:
         event_type: { type: string }
         payload: { type: object }
         idempotency_key: { type: [string, "null"] }
+        customer: { type: [string, "null"] }
         created_at: { type: string, format: date-time }
     DeliveryStatus:
       type: string

@@ -138,7 +138,7 @@ func TestIntegrationIngestWritesEventAndDeliveriesAtomically(t *testing.T) {
 // transaction, so a missing rollback would leave an orphaned event.
 type failingDeliveries struct{ application.DeliveryRepository }
 
-func (failingDeliveries) CreateForEvent(context.Context, uuid.UUID, uuid.UUID) (int64, error) {
+func (failingDeliveries) CreateForEvent(context.Context, uuid.UUID, uuid.UUID, *string) (int64, error) {
 	return 0, errors.New("injected delivery failure")
 }
 

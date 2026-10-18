@@ -50,5 +50,5 @@ func (s *DevelopmentKeyService) Issue(ctx context.Context) (domain.APIKey, strin
 		return domain.APIKey{}, "", err
 	}
 	principal := Principal{OrganizationID: project.OrganizationID}
-	return s.keys.CreateAPIKey(ctx, principal, project.ID, devKeyName)
+	return s.keys.CreateAPIKey(ctx, principal, project.ID, devKeyName, nil)
 }

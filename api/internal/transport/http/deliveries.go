@@ -96,15 +96,15 @@ func (h deliveryHandler) listAttempts(c fiber.Ctx) error {
 }
 
 func (h deliveryHandler) listForProject(c fiber.Ctx) error {
-	projectID, err := uuid.Parse(c.Params("id"))
+	projectID, err := projectParam(c)
 	if err != nil {
-		return writeError(c, application.ErrInvalidInput)
+		return writeError(c, err)
 	}
 	endpointID, err := uuidQuery(c, "endpoint_id")
 	if err != nil {
 		return writeError(c, err)
 	}
-	filter := application.DeliveryFilter{Status: domain.DeliveryStatus(c.Query("status")), EndpointID: endpointID}
+	filter := application.DeliveryFilter{Status: domain.DeliveryStatus(c.Query("status")), EndpointID: endpointID, Customer: optionalString(c.Query("customer"))}
 	page, err := h.deliveries.ListForProject(c.Context(), principalFrom(c), projectID, filter, pageParams(c))
 	if err != nil {
 		return writeError(c, err)

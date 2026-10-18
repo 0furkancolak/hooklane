@@ -10,6 +10,7 @@ const apiKey = {
   project_id: ids.project,
   name: "billing-service",
   prefix: "hlk_ab12",
+  scopes: ["admin"],
   revoked: false,
   created_at: "2026-10-17T09:00:00Z",
 };
@@ -37,9 +38,24 @@ describe("APIKeysPage", () => {
 
     expect(await screen.findByText(rawKey)).toBeInTheDocument();
     expect(await screen.findByText("hlk_ab12…")).toBeInTheDocument();
-    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "billing-service" });
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "billing-service", scopes: ["admin"] });
     await userEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByText(rawKey)).not.toBeInTheDocument();
+  });
+
+  it("generates a key limited to sending events", async () => {
+    const { fetch, calls } = fakeFetch({
+      [`GET /v1/projects/${ids.project}/api-keys`]: () => ({ body: { api_keys: [] } }),
+      [`POST /v1/projects/${ids.project}/api-keys`]: () => ({ status: 201, body: { ...apiKey, scopes: ["ingest"], raw_key: rawKey } }),
+    });
+    renderWithApi(<APIKeysPage projectId={ids.project} />, fetch);
+
+    await userEvent.type(await screen.findByLabelText("Key name"), "sender");
+    await userEvent.selectOptions(screen.getByLabelText("Scope"), "ingest");
+    await userEvent.click(screen.getByRole("button", { name: "Generate API key" }));
+
+    await screen.findByText(rawKey);
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "sender", scopes: ["ingest"] });
   });
 
   it("revokes a key only after confirmation", async () => {

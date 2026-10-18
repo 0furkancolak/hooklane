@@ -31,6 +31,9 @@ func (s *DeliveryService) Get(ctx context.Context, principal Principal, id uuid.
 	if delivery.OrganizationID != principal.OrganizationID {
 		return domain.Delivery{}, ErrForbidden
 	}
+	if principal.IsPortal() && !sameCustomer(delivery.EndpointCustomer, principal.Customer) {
+		return domain.Delivery{}, ErrNotFound
+	}
 	return delivery, nil
 }
 
@@ -50,6 +53,9 @@ func (s *DeliveryService) ListForProject(ctx context.Context, principal Principa
 	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
 		return Page[domain.Delivery]{}, err
 	}
+	if principal.IsPortal() {
+		filter.Customer = principal.Customer
+	}
 	return paginate(page, func(limit, offset int32) ([]domain.Delivery, error) {
 		return s.deliveries.ListByProject(ctx, projectID, filter, limit, offset)
 	})
@@ -57,6 +63,9 @@ func (s *DeliveryService) ListForProject(ctx context.Context, principal Principa
 
 // Stats summarizes the project's deliveries by status.
 func (s *DeliveryService) Stats(ctx context.Context, principal Principal, projectID uuid.UUID) (domain.DeliveryStats, error) {
+	if principal.IsPortal() {
+		return domain.DeliveryStats{}, ErrForbidden
+	}
 	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
 		return domain.DeliveryStats{}, err
 	}
@@ -65,6 +74,9 @@ func (s *DeliveryService) Stats(ctx context.Context, principal Principal, projec
 
 // ListForEvent returns the event's fan-out deliveries and their replays.
 func (s *DeliveryService) ListForEvent(ctx context.Context, principal Principal, eventID uuid.UUID) ([]domain.Delivery, error) {
+	if principal.IsPortal() {
+		return nil, ErrForbidden
+	}
 	event, err := s.events.Get(ctx, eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

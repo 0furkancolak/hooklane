@@ -36,6 +36,8 @@ func NewEventService(
 }
 
 type IngestInput struct {
+	// Customer, when set, sends the event only to that customer's endpoints.
+	Customer       *string
 	EventType      string
 	Payload        json.RawMessage
 	IdempotencyKey string
@@ -84,7 +86,7 @@ func (s *EventService) Ingest(ctx context.Context, principal Principal, projectI
 			return nil
 		}
 
-		count, err := s.deliveries.CreateForEvent(ctx, inserted.Event.ID, project.ID)
+		count, err := s.deliveries.CreateForEvent(ctx, inserted.Event.ID, project.ID, inserted.Event.Customer)
 		if err != nil {
 			return err
 		}
@@ -137,6 +139,13 @@ func validateIngest(in IngestInput) (domain.Event, error) {
 	}
 
 	event := domain.Event{EventType: eventType, Payload: in.Payload}
+	if in.Customer != nil {
+		if !customerPattern.MatchString(*in.Customer) {
+			return domain.Event{}, ErrInvalidInput
+		}
+		customer := *in.Customer
+		event.Customer = &customer
+	}
 	if in.IdempotencyKey != "" {
 		key := in.IdempotencyKey
 		if len(key) > maxIdempotencyKeyLength || !isPrintableASCII(key) {

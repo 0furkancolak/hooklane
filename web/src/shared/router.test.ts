@@ -14,6 +14,9 @@ describe("parseRoute", () => {
     ["#/projects/p1/endpoints/x", { name: "not_found" }],
     ["#/projects/p1/api-keys/x", { name: "not_found" }],
     ["#/projects/p1/events/e1/extra", { name: "not_found" }],
+    ["#/portal/hlp_abc", { name: "portal", token: "hlp_abc" }],
+    ["#/portal", { name: "not_found" }],
+    ["#/portal/a/b", { name: "not_found" }],
     ["#/nope", { name: "not_found" }],
   ])("%s", (hash, expected) => {
     expect(parseRoute(hash)).toEqual(expected);

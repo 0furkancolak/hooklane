@@ -52,3 +52,24 @@ func uuidQuery(c fiber.Ctx, name string) (*uuid.UUID, error) {
 func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
+
+// projectParam returns the project a request is about: the route's :id, or for
+// portal principals always their own project.
+func projectParam(c fiber.Ctx) (uuid.UUID, error) {
+	if principal := principalFrom(c); principal.IsPortal() {
+		return principal.ProjectID, nil
+	}
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return uuid.Nil, application.ErrInvalidInput
+	}
+	return id, nil
+}
+
+// optionalString returns a pointer to the query value, or nil when absent.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}

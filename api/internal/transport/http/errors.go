@@ -38,6 +38,10 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusUnauthorized, "revoked", "api key revoked"
 	case errors.Is(err, application.ErrForbidden):
 		return http.StatusForbidden, "forbidden", "forbidden"
+	case errors.Is(err, application.ErrInsufficientScope):
+		return http.StatusForbidden, "insufficient_scope", "this API key does not have the scope this action needs"
+	case errors.Is(err, application.ErrLimitReached):
+		return http.StatusConflict, "limit_reached", "limit reached"
 	case errors.Is(err, application.ErrNotFound), errors.Is(err, pgx.ErrNoRows):
 		return http.StatusNotFound, "not_found", "not found"
 	case errors.Is(err, application.ErrAlreadyRevoked):

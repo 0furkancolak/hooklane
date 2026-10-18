@@ -313,7 +313,7 @@ kbd {
 
 .content {
   width: 100%;
-  max-width: 1120px;
+  max-width: 1560px;
   padding: 20px 40px 64px;
 }
 
@@ -1565,4 +1565,87 @@ ol.attempts {
   .segmented::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* An empty list inside a flush panel is the panel's own content, not a box in a box. */
+.panel-flush > .state {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+/* ---------- Customer portal ---------- */
+.portal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.portal-bar .brand {
+  padding: 0;
+}
+
+.portal-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portal-content {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
+
+.portal-content > section > h2:first-child {
+  margin-top: 8px;
+}
+
+.portal-content > section > p.muted {
+  margin: -6px 0 14px;
+}
+
+.link-button {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+.detail-row td {
+  white-space: normal;
+  background: var(--surface-2);
+}
+
+.input-narrow {
+  flex: 0 1 200px;
+}
+
+@media (max-width: 560px) {
+  .portal-bar,
+  .portal-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+.tag-flat {
+  margin-left: 0;
+}
+
+.portal-content > section + section {
+  margin-top: 36px;
 }

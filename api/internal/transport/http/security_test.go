@@ -36,7 +36,7 @@ func TestCrossTenantAccessIsRefusedOnEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.store.Deliveries().CreateForEvent(ctx, event.Event.ID, env.foreign.ID); err != nil {
+	if _, err := env.store.Deliveries().CreateForEvent(ctx, event.Event.ID, env.foreign.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	deliveries, err := env.store.Deliveries().ListByEvent(ctx, event.Event.ID)

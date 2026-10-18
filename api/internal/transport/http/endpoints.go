@@ -12,8 +12,9 @@ type endpointHandler struct {
 }
 
 type createEndpointRequest struct {
-	URL     string `json:"url"`
-	Enabled *bool  `json:"enabled"`
+	URL      string  `json:"url"`
+	Enabled  *bool   `json:"enabled"`
+	Customer *string `json:"customer"`
 }
 
 type updateEndpointRequest struct {
@@ -26,23 +27,25 @@ type endpointResponse struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	URL       string    `json:"url"`
 	Enabled   bool      `json:"enabled"`
+	Customer  *string   `json:"customer"`
 	CreatedAt string    `json:"created_at"`
 	UpdatedAt string    `json:"updated_at"`
 	Secret    string    `json:"secret,omitempty"`
 }
 
 func (h endpointHandler) create(c fiber.Ctx) error {
-	projectID, err := uuid.Parse(c.Params("id"))
+	projectID, err := projectParam(c)
 	if err != nil {
-		return writeError(c, application.ErrInvalidInput)
+		return writeError(c, err)
 	}
 	var req createEndpointRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return writeError(c, application.ErrInvalidInput)
 	}
 	endpoint, secret, err := h.endpoints.Create(c.Context(), principalFrom(c), projectID, application.CreateEndpointInput{
-		URL:     req.URL,
-		Enabled: req.Enabled,
+		URL:      req.URL,
+		Enabled:  req.Enabled,
+		Customer: req.Customer,
 	})
 	if err != nil {
 		return writeError(c, err)
@@ -53,15 +56,15 @@ func (h endpointHandler) create(c fiber.Ctx) error {
 }
 
 func (h endpointHandler) list(c fiber.Ctx) error {
-	projectID, err := uuid.Parse(c.Params("id"))
+	projectID, err := projectParam(c)
 	if err != nil {
-		return writeError(c, application.ErrInvalidInput)
+		return writeError(c, err)
 	}
 	enabled, err := boolQuery(c, "enabled")
 	if err != nil {
 		return writeError(c, err)
 	}
-	page, err := h.endpoints.List(c.Context(), principalFrom(c), projectID, application.EndpointFilter{Enabled: enabled}, pageParams(c))
+	page, err := h.endpoints.List(c.Context(), principalFrom(c), projectID, application.EndpointFilter{Enabled: enabled, Customer: optionalString(c.Query("customer"))}, pageParams(c))
 	if err != nil {
 		return writeError(c, err)
 	}
@@ -118,6 +121,7 @@ func mapEndpoint(endpoint domain.Endpoint) endpointResponse {
 		ProjectID: endpoint.ProjectID,
 		URL:       endpoint.URL,
 		Enabled:   endpoint.Enabled,
+		Customer:  endpoint.Customer,
 		CreatedAt: formatTime(endpoint.CreatedAt),
 		UpdatedAt: formatTime(endpoint.UpdatedAt),
 	}

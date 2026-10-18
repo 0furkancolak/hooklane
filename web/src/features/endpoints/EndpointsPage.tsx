@@ -13,6 +13,7 @@ import { Icon } from "../../shared/ui/Icon";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { Pager } from "../../shared/ui/Pager";
 import { CopyButton } from "../../shared/ui/CopyButton";
+import { PortalLinkPanel } from "./PortalLinkPanel";
 
 type EnabledFilter = "all" | "enabled" | "disabled";
 
@@ -22,7 +23,9 @@ export function EndpointsPage({ projectId, query }: { projectId: string; query: 
   const rawFilter = query.get("enabled");
   const filter: EnabledFilter = rawFilter === "true" ? "enabled" : rawFilter === "false" ? "disabled" : "all";
   const enabled = filter === "all" ? undefined : filter === "enabled";
-  const [state, reload] = useAsync((signal) => api.listEndpoints(projectId, { limit, offset, enabled }, signal), [api, projectId, limit, offset, enabled]);
+  const customer = query.get("customer") ?? "";
+  const [customerInput, setCustomerInput] = useState(customer);
+  const [state, reload] = useAsync((signal) => api.listEndpoints(projectId, { limit, offset, enabled, customer: customer || undefined }, signal), [api, projectId, limit, offset, enabled, customer]);
   const [created, setCreated] = useState<{ url: string; secret: string } | null>(null);
 
   const base = href("projects", projectId, "endpoints");
@@ -48,7 +51,8 @@ export function EndpointsPage({ projectId, query }: { projectId: string; query: 
       <div className="panel">
         <h2>{t("endpoints.add")}</h2>
         <CreateEndpoint
-          projectId={projectId}
+          create={(url, forCustomer) => api.createEndpoint(projectId, url, forCustomer)}
+          withCustomer
           onCreated={(endpoint) => {
             setCreated(endpoint);
             update({ enabled: undefined });
@@ -57,6 +61,7 @@ export function EndpointsPage({ projectId, query }: { projectId: string; query: 
         />
       </div>
       {created && <SecretNotice url={created.url} secret={created.secret} onDismiss={() => setCreated(null)} />}
+      <PortalLinkPanel projectId={projectId} />
       <div className="toolbar">
         <div className="segmented" role="group" aria-label={t("endpoints.filter")}>
           {filters.map((f) => (
@@ -65,6 +70,20 @@ export function EndpointsPage({ projectId, query }: { projectId: string; query: 
             </button>
           ))}
         </div>
+        <form
+          className="search"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            update({ customer: customerInput.trim() });
+          }}
+        >
+          <Icon name="search" size={16} />
+          <label htmlFor="endpoint-customer-filter" className="sr-only">
+            {t("endpoints.customerFilter")}
+          </label>
+          <input id="endpoint-customer-filter" placeholder={t("endpoints.customerFilter")} value={customerInput} onChange={(e) => setCustomerInput(e.target.value)} />
+        </form>
       </div>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
@@ -92,9 +111,17 @@ export function EndpointsPage({ projectId, query }: { projectId: string; query: 
   );
 }
 
-function CreateEndpoint({ projectId, onCreated }: { projectId: string; onCreated: (e: { url: string; secret: string }) => void }) {
-  const api = useApi();
+export function CreateEndpoint({
+  create,
+  withCustomer = false,
+  onCreated,
+}: {
+  create: (url: string, customer?: string) => Promise<{ url: string; secret: string }>;
+  withCustomer?: boolean;
+  onCreated: (e: { url: string; secret: string }) => void;
+}) {
   const [url, setUrl] = useState("");
+  const [customer, setCustomer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,8 +130,9 @@ function CreateEndpoint({ projectId, onCreated }: { projectId: string; onCreated
     setBusy(true);
     setError(null);
     try {
-      const endpoint = await api.createEndpoint(projectId, url.trim());
+      const endpoint = await create(url.trim(), customer.trim() || undefined);
       setUrl("");
+      setCustomer("");
       onCreated({ url: endpoint.url, secret: endpoint.secret });
     } catch (err) {
       setError(err instanceof Error ? endpointError(err) : t("endpoints.createFailed"));
@@ -119,6 +147,14 @@ function CreateEndpoint({ projectId, onCreated }: { projectId: string; onCreated
         {t("endpoints.urlLabel")}
       </label>
       <input id="endpoint-url" type="url" required placeholder="https://example.com/webhooks" value={url} onChange={(e) => setUrl(e.target.value)} />
+      {withCustomer && (
+        <>
+          <label htmlFor="endpoint-customer" className="sr-only">
+            {t("endpoints.customerLabel")}
+          </label>
+          <input id="endpoint-customer" className="input-narrow" maxLength={128} placeholder={t("endpoints.customerPlaceholder")} value={customer} onChange={(e) => setCustomer(e.target.value)} />
+        </>
+      )}
       <button type="submit" className="button button-primary" disabled={busy || url.trim() === ""}>
         {busy ? t("common.adding") : t("endpoints.add")}
       </button>
@@ -131,7 +167,7 @@ function CreateEndpoint({ projectId, onCreated }: { projectId: string; onCreated
   );
 }
 
-function SecretNotice({ url, secret, onDismiss }: { url: string; secret: string; onDismiss: () => void }) {
+export function SecretNotice({ url, secret, onDismiss }: { url: string; secret: string; onDismiss: () => void }) {
   return (
     <div className="panel secret" role="status">
       <p>
@@ -148,8 +184,14 @@ function SecretNotice({ url, secret, onDismiss }: { url: string; secret: string;
   );
 }
 
-function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; endpoint: Endpoint; onChanged: () => void }) {
+export type EndpointOps = {
+  update: (id: string, change: { url?: string; enabled?: boolean }) => Promise<unknown>;
+  secret: (id: string) => Promise<{ secret: string }>;
+};
+
+export function EndpointRow({ projectId, endpoint, onChanged, ops }: { projectId?: string; endpoint: Endpoint; onChanged: () => void; ops?: EndpointOps }) {
   const api = useApi();
+  const operations: EndpointOps = ops ?? { update: (id, change) => api.updateEndpoint(id, change), secret: (id) => api.getEndpointSecret(id) };
   const [editing, setEditing] = useState(false);
   const [url, setUrl] = useState(endpoint.url);
   const [secret, setSecret] = useState<string | null>(null);
@@ -173,7 +215,7 @@ function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; en
   async function revealSecret() {
     setError(null);
     try {
-      setSecret((await api.getEndpointSecret(endpoint.id)).secret);
+      setSecret((await operations.secret(endpoint.id)).secret);
     } catch (err) {
       setError(err instanceof Error ? describeError(err) : t("endpoints.secretFailed"));
     }
@@ -187,7 +229,7 @@ function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; en
             className="inline-form"
             onSubmit={(e) => {
               e.preventDefault();
-              void run(() => api.updateEndpoint(endpoint.id, { url: url.trim() }), () => setEditing(false));
+              void run(() => operations.update(endpoint.id, { url: url.trim() }), () => setEditing(false));
             }}
           >
             <label htmlFor={`url-${endpoint.id}`} className="sr-only">
@@ -207,7 +249,8 @@ function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; en
         <div className="row-meta">
           <EnabledBadge enabled={endpoint.enabled} />
           <span className="muted">{t("endpoints.added", { date: formatTime(endpoint.created_at) })}</span>
-          <a href={href("projects", projectId, "deliveries") + `?endpoint_id=${endpoint.id}`}>{t("nav.deliveries")}</a>
+          {projectId && <a href={href("projects", projectId, "deliveries") + `?endpoint_id=${endpoint.id}`}>{t("nav.deliveries")}</a>}
+          {endpoint.customer && <span className="tag">{endpoint.customer}</span>}
         </div>
         {secret && (
           <div className="secret-inline">
@@ -226,7 +269,7 @@ function EndpointRow({ projectId, endpoint, onChanged }: { projectId: string; en
       </div>
       {!editing && (
         <div className="actions">
-          <button type="button" className="button" disabled={busy} onClick={() => void run(() => api.updateEndpoint(endpoint.id, { enabled: !endpoint.enabled }))}>
+          <button type="button" className="button" disabled={busy} onClick={() => void run(() => operations.update(endpoint.id, { enabled: !endpoint.enabled }))}>
             {endpoint.enabled ? t("endpoints.disable") : t("endpoints.enable")}
           </button>
           <button type="button" className="button" onClick={() => setEditing(true)}>
