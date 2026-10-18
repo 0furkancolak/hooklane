@@ -250,18 +250,99 @@ a:focus-visible {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px 16px;
+  padding: 32px 16px;
 }
 
-.signin-panel {
-  width: min(440px, 100%);
+.signin-layout {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.signin-intro h1 {
+  font-size: 34px;
+  margin: 6px 0 12px;
+}
+
+.lead {
+  font-size: 17px;
+  margin: 0 0 24px;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.features li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+  border-left: 2px solid var(--accent);
+}
+
+.signin-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.api-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.api-status-ready .dot {
+  background: var(--ok);
+}
+
+.api-status-down .dot {
+  background: var(--bad);
+}
+
+.signin-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.signin-panel,
+.signin-help {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.signin-panel h1 {
-  margin-bottom: 8px;
+.signin-side h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.signin-help p {
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .signin-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
 }
 
 .eyebrow {

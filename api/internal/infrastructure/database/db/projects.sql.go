@@ -34,6 +34,25 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const getOldestProject = `-- name: GetOldestProject :one
+SELECT id, organization_id, name, created_at
+FROM projects
+ORDER BY created_at, id
+LIMIT 1
+`
+
+func (q *Queries) GetOldestProject(ctx context.Context) (Project, error) {
+	row := q.db.QueryRow(ctx, getOldestProject)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getProject = `-- name: GetProject :one
 SELECT id, organization_id, name, created_at
 FROM projects

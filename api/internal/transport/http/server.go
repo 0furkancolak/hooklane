@@ -20,6 +20,8 @@ type Services struct {
 	Endpoints  *application.EndpointService
 	Events     *application.EventService
 	Deliveries *application.DeliveryService
+	// DevKeys is only used when APP_ENV=development.
+	DevKeys *application.DevelopmentKeyService
 }
 
 type Server struct {
@@ -93,6 +95,13 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	v1.Get("/deliveries/:id", auth, deliveries.get)
 	v1.Get("/deliveries/:id/attempts", auth, deliveries.listAttempts)
 	v1.Post("/deliveries/:id/replay", auth, deliveries.replay)
+
+	// Development only, and deliberately missing from openapi.yaml.
+	if cfg.AppEnv == config.AppEnvDevelopment && svc.DevKeys != nil {
+		dev := devKeyHandler{keys: svc.DevKeys}
+		v1.Get("/dev", dev.status)
+		v1.Post("/dev/api-keys", dev.issue)
+	}
 
 	if o.dashboardDir != "" {
 		mountDashboard(app, o.dashboardDir)

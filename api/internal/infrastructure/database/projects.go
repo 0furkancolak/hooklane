@@ -27,6 +27,15 @@ func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (domain.Project, e
 	return mapProject(row), nil
 }
 
+// OldestProject returns the first project ever created, or pgx.ErrNoRows.
+func (s *Store) OldestProject(ctx context.Context) (domain.Project, error) {
+	row, err := s.q(ctx).GetOldestProject(ctx)
+	if err != nil {
+		return domain.Project{}, err
+	}
+	return mapProject(row), nil
+}
+
 func (s *Store) ListProjectsByOrganization(ctx context.Context, organizationID uuid.UUID, limit, offset int32) ([]domain.Project, error) {
 	rows, err := s.q(ctx).ListProjectsByOrganization(ctx, db.ListProjectsByOrganizationParams{
 		OrganizationID: uuidToPg(organizationID),
