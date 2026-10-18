@@ -14,6 +14,10 @@ include breaking changes, which are called out.
 ### Added
 
 - One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
+- Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.
+- API key scopes: `admin`, `ingest` (send events only) and `read`, chosen when a key is created (dashboard and API). Existing keys stay `admin`. Revealing endpoint secrets now needs `admin`.
+- `LOG_FORMAT=pretty|json`: coloured one-line logs by default in development (JSON elsewhere).
+- The dashboard uses the full width of wide screens, and an empty list no longer draws a box inside a box.
 - The dashboard is available in English and Turkish (switch in the sidebar or on the sign-in screen; it follows the browser language at first and remembers the choice).
 - Lists share one filter bar and pagination: filters, page size and page are kept in the URL, with Previous/Next, the visible range and a rows-per-page selector. Deliveries can be filtered by status and endpoint, endpoints by state and events by type.
 - Playground: a guided page in every project that creates an endpoint, sends a test event and shows its deliveries, attempts and the request the receiver got. With `APP_ENV=development` it has a built-in receiver (`/v1/dev/sink/{token}`, which can simulate failures with `?status=`), and the dashboard can create projects.

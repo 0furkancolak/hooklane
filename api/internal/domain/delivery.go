@@ -17,10 +17,12 @@ const (
 )
 
 type Delivery struct {
-	ID                 uuid.UUID
-	EventID            uuid.UUID
-	EndpointID         uuid.UUID
-	OrganizationID     uuid.UUID
+	ID             uuid.UUID
+	EventID        uuid.UUID
+	EndpointID     uuid.UUID
+	OrganizationID uuid.UUID
+	// EndpointCustomer is the customer of the delivery's endpoint, if any.
+	EndpointCustomer   *string
 	Status             DeliveryStatus
 	AttemptCount       int32
 	NextAttemptAt      time.Time

@@ -97,8 +97,8 @@ func (s Events) ListByProject(ctx context.Context, projectID uuid.UUID, filter a
 
 type Deliveries struct{ Store *Store }
 
-func (s Deliveries) CreateForEvent(ctx context.Context, eventID, projectID uuid.UUID) (int64, error) {
-	return s.Store.CreateDeliveriesForEvent(ctx, eventID, projectID)
+func (s Deliveries) CreateForEvent(ctx context.Context, eventID, projectID uuid.UUID, customer *string) (int64, error) {
+	return s.Store.CreateDeliveriesForEvent(ctx, eventID, projectID, customer)
 }
 
 func (s Deliveries) CountByEvent(ctx context.Context, eventID uuid.UUID) (int64, error) {
@@ -129,12 +129,13 @@ func (s Deliveries) StatsByProject(ctx context.Context, projectID uuid.UUID) (do
 	return s.Store.DeliveryStatsByProject(ctx, projectID)
 }
 
-func (s *Store) Orgs() Organizations    { return Organizations{Store: s} }
-func (s *Store) Projects() Projects     { return Projects{Store: s} }
-func (s *Store) Keys() APIKeys          { return APIKeys{Store: s} }
-func (s *Store) Endpoints() Endpoints   { return Endpoints{Store: s} }
-func (s *Store) Events() Events         { return Events{Store: s} }
-func (s *Store) Deliveries() Deliveries { return Deliveries{Store: s} }
+func (s *Store) PortalTokens() PortalTokens { return PortalTokens{Store: s} }
+func (s *Store) Orgs() Organizations        { return Organizations{Store: s} }
+func (s *Store) Projects() Projects         { return Projects{Store: s} }
+func (s *Store) Keys() APIKeys              { return APIKeys{Store: s} }
+func (s *Store) Endpoints() Endpoints       { return Endpoints{Store: s} }
+func (s *Store) Events() Events             { return Events{Store: s} }
+func (s *Store) Deliveries() Deliveries     { return Deliveries{Store: s} }
 
 var (
 	_ application.OrganizationRepository = Organizations{}
@@ -143,5 +144,6 @@ var (
 	_ application.EndpointRepository     = Endpoints{}
 	_ application.EventRepository        = Events{}
 	_ application.DeliveryRepository     = Deliveries{}
+	_ application.PortalTokenRepository  = PortalTokens{}
 	_ application.Transactor             = (*Store)(nil)
 )

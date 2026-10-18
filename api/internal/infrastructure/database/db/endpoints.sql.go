@@ -12,9 +12,9 @@ import (
 )
 
 const createEndpoint = `-- name: CreateEndpoint :one
-INSERT INTO endpoints (project_id, url, secret_encrypted, enabled)
-VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, url, secret_encrypted, enabled, created_at, updated_at
+INSERT INTO endpoints (project_id, url, secret_encrypted, enabled, customer)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, url, secret_encrypted, enabled, created_at, updated_at, customer
 `
 
 type CreateEndpointParams struct {
@@ -22,6 +22,7 @@ type CreateEndpointParams struct {
 	Url             string
 	SecretEncrypted []byte
 	Enabled         bool
+	Customer        pgtype.Text
 }
 
 func (q *Queries) CreateEndpoint(ctx context.Context, arg CreateEndpointParams) (Endpoint, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateEndpoint(ctx context.Context, arg CreateEndpointParams) 
 		arg.Url,
 		arg.SecretEncrypted,
 		arg.Enabled,
+		arg.Customer,
 	)
 	var i Endpoint
 	err := row.Scan(
@@ -40,13 +42,14 @@ func (q *Queries) CreateEndpoint(ctx context.Context, arg CreateEndpointParams) 
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Customer,
 	)
 	return i, err
 }
 
 const getEndpoint = `-- name: GetEndpoint :one
 SELECT e.id, e.project_id, p.organization_id, e.url, e.secret_encrypted, e.enabled,
-       e.created_at, e.updated_at
+       e.created_at, e.updated_at, e.customer
 FROM endpoints e
 JOIN projects p ON p.id = e.project_id
 WHERE e.id = $1
@@ -61,6 +64,7 @@ type GetEndpointRow struct {
 	Enabled         bool
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	Customer        pgtype.Text
 }
 
 func (q *Queries) GetEndpoint(ctx context.Context, id pgtype.UUID) (GetEndpointRow, error) {
@@ -75,21 +79,24 @@ func (q *Queries) GetEndpoint(ctx context.Context, id pgtype.UUID) (GetEndpointR
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Customer,
 	)
 	return i, err
 }
 
 const listEndpointsByProject = `-- name: ListEndpointsByProject :many
-SELECT id, project_id, url, secret_encrypted, enabled, created_at, updated_at
+SELECT id, project_id, url, secret_encrypted, enabled, created_at, updated_at, customer
 FROM endpoints
 WHERE project_id = $1
-  AND ($2::boolean IS NULL OR enabled = $2::boolean)
+  AND ($2::text IS NULL OR customer = $2::text)
+  AND ($3::boolean IS NULL OR enabled = $3::boolean)
 ORDER BY created_at DESC, id DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListEndpointsByProjectParams struct {
 	ProjectID pgtype.UUID
+	Customer  pgtype.Text
 	Enabled   pgtype.Bool
 	Offset    int32
 	Limit     int32
@@ -98,6 +105,7 @@ type ListEndpointsByProjectParams struct {
 func (q *Queries) ListEndpointsByProject(ctx context.Context, arg ListEndpointsByProjectParams) ([]Endpoint, error) {
 	rows, err := q.db.Query(ctx, listEndpointsByProject,
 		arg.ProjectID,
+		arg.Customer,
 		arg.Enabled,
 		arg.Offset,
 		arg.Limit,
@@ -117,6 +125,7 @@ func (q *Queries) ListEndpointsByProject(ctx context.Context, arg ListEndpointsB
 			&i.Enabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Customer,
 		); err != nil {
 			return nil, err
 		}
@@ -134,7 +143,7 @@ SET url = coalesce($1, url),
     enabled = coalesce($2, enabled),
     updated_at = now()
 WHERE id = $3
-RETURNING id, project_id, url, secret_encrypted, enabled, created_at, updated_at
+RETURNING id, project_id, url, secret_encrypted, enabled, created_at, updated_at, customer
 `
 
 type UpdateEndpointParams struct {
@@ -154,6 +163,7 @@ func (q *Queries) UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) 
 		&i.Enabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Customer,
 	)
 	return i, err
 }

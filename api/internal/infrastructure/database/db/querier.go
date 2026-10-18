@@ -23,6 +23,7 @@ type Querier interface {
 	CreateDeliveriesForEvent(ctx context.Context, arg CreateDeliveriesForEventParams) (int64, error)
 	CreateEndpoint(ctx context.Context, arg CreateEndpointParams) (Endpoint, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
+	CreatePortalToken(ctx context.Context, arg CreatePortalTokenParams) (PortalToken, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error)
 	// Deletes up to batch_size events older than the retention period whose
@@ -41,6 +42,7 @@ type Querier interface {
 	GetEventByIdempotencyKey(ctx context.Context, arg GetEventByIdempotencyKeyParams) (GetEventByIdempotencyKeyRow, error)
 	GetOldestProject(ctx context.Context) (Project, error)
 	GetOrganization(ctx context.Context, id pgtype.UUID) (Organization, error)
+	GetPortalTokenByHash(ctx context.Context, tokenHash []byte) (GetPortalTokenByHashRow, error)
 	GetProject(ctx context.Context, id pgtype.UUID) (Project, error)
 	InsertDeliveryAttempt(ctx context.Context, arg InsertDeliveryAttemptParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) (Event, error)

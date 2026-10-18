@@ -63,6 +63,9 @@ done <.env
 # The local stack always runs in development mode so http:// and localhost
 # receivers work, whatever APP_ENV says for other uses of .env.
 export APP_ENV=development
+# Coloured one-line logs; the prefixing below is not a terminal, so say so.
+export LOG_FORMAT="${LOG_FORMAT:-pretty}"
+[ -t 1 ] && export LOG_COLOR="${LOG_COLOR:-1}"
 POSTGRES_PORT="${POSTGRES_PORT:-5433}"
 export DATABASE_URL="${DATABASE_URL:-postgres://hooklane:${POSTGRES_PASSWORD:-local_dev_only_change_me}@localhost:${POSTGRES_PORT}/hooklane?sslmode=disable}"
 

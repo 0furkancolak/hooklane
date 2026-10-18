@@ -17,6 +17,7 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		Url:             endpoint.URL,
 		SecretEncrypted: endpoint.SecretEncrypted,
 		Enabled:         endpoint.Enabled,
+		Customer:        textPtr(endpoint.Customer),
 	})
 	if err != nil {
 		return domain.Endpoint{}, err
@@ -38,6 +39,7 @@ func (s *Store) GetEndpoint(ctx context.Context, id uuid.UUID) (domain.Endpoint,
 		URL:             row.Url,
 		SecretEncrypted: row.SecretEncrypted,
 		Enabled:         row.Enabled,
+		Customer:        textFromPg(row.Customer),
 		CreatedAt:       row.CreatedAt.Time,
 		UpdatedAt:       row.UpdatedAt.Time,
 	}, nil
@@ -51,6 +53,7 @@ func (s *Store) ListEndpointsByProject(ctx context.Context, projectID uuid.UUID,
 	rows, err := s.q(ctx).ListEndpointsByProject(ctx, db.ListEndpointsByProjectParams{
 		ProjectID: uuidToPg(projectID),
 		Enabled:   enabled,
+		Customer:  textPtr(filter.Customer),
 		Limit:     limit,
 		Offset:    offset,
 	})
@@ -86,6 +89,7 @@ func mapEndpoint(row db.Endpoint) domain.Endpoint {
 		URL:             row.Url,
 		SecretEncrypted: row.SecretEncrypted,
 		Enabled:         row.Enabled,
+		Customer:        textFromPg(row.Customer),
 		CreatedAt:       row.CreatedAt.Time,
 		UpdatedAt:       row.UpdatedAt.Time,
 	}

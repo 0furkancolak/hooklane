@@ -12,6 +12,7 @@ export type Endpoint = {
   project_id: string;
   url: string;
   enabled: boolean;
+  customer: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -30,11 +31,14 @@ export type SinkRequest = {
 
 export type CreatedEndpoint = Endpoint & { secret: string };
 
+export type Scope = "admin" | "ingest" | "read";
+
 export type APIKey = {
   id: string;
   project_id: string;
   name: string;
   prefix: string;
+  scopes: Scope[];
   revoked: boolean;
   created_at: string;
 };
@@ -47,6 +51,7 @@ export type HooklaneEvent = {
   event_type: string;
   payload: unknown;
   idempotency_key: string | null;
+  customer: string | null;
   created_at: string;
 };
 
@@ -94,3 +99,7 @@ export type Page<K extends string, T> = { [key in K]: T[] } & {
 export function isTerminal(status: DeliveryStatus): boolean {
   return status === "succeeded" || status === "dead_letter";
 }
+
+export type PortalLink = { token: string; customer: string; expires_at: string; path: string };
+
+export type PortalMe = { customer: string; project_name: string; expires_at: string };

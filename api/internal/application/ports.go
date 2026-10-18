@@ -30,6 +30,11 @@ type APIKeyRepository interface {
 	TouchLastUsed(ctx context.Context, id uuid.UUID) error
 }
 
+type PortalTokenRepository interface {
+	Create(ctx context.Context, token domain.PortalToken) (domain.PortalToken, error)
+	GetByHash(ctx context.Context, hash []byte) (domain.PortalToken, error)
+}
+
 type EndpointRepository interface {
 	Create(ctx context.Context, endpoint domain.Endpoint) (domain.Endpoint, error)
 	Get(ctx context.Context, id uuid.UUID) (domain.Endpoint, error)
@@ -53,7 +58,9 @@ type EventRepository interface {
 }
 
 type DeliveryRepository interface {
-	CreateForEvent(ctx context.Context, eventID, projectID uuid.UUID) (int64, error)
+	// CreateForEvent queues one delivery per enabled endpoint of the project
+	// whose customer equals the event's (both absent counts as equal).
+	CreateForEvent(ctx context.Context, eventID, projectID uuid.UUID, customer *string) (int64, error)
 	CountByEvent(ctx context.Context, eventID uuid.UUID) (int64, error)
 	// Get returns the delivery with its owning organization.
 	Get(ctx context.Context, id uuid.UUID) (domain.Delivery, error)
@@ -78,16 +85,19 @@ type QueueBacklog struct {
 
 // Zero-valued filter fields match everything.
 type EndpointFilter struct {
-	Enabled *bool
+	Enabled  *bool
+	Customer *string
 }
 
 type EventFilter struct {
 	EventType string
+	Customer  *string
 }
 
 type DeliveryFilter struct {
 	Status     domain.DeliveryStatus
 	EndpointID *uuid.UUID
+	Customer   *string
 }
 
 // ErrLeaseLost means the delivery's lease expired and another worker may have

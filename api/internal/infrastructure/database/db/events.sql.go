@@ -46,7 +46,7 @@ func (q *Queries) DeleteExpiredEvents(ctx context.Context, arg DeleteExpiredEven
 
 const getEvent = `-- name: GetEvent :one
 SELECT ev.id, ev.project_id, p.organization_id, ev.event_type, ev.payload,
-       ev.idempotency_key, ev.created_at
+       ev.idempotency_key, ev.created_at, ev.customer
 FROM events ev
 JOIN projects p ON p.id = ev.project_id
 WHERE ev.id = $1
@@ -60,6 +60,7 @@ type GetEventRow struct {
 	Payload        []byte
 	IdempotencyKey pgtype.Text
 	CreatedAt      pgtype.Timestamptz
+	Customer       pgtype.Text
 }
 
 func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, error) {
@@ -73,21 +74,24 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, er
 		&i.Payload,
 		&i.IdempotencyKey,
 		&i.CreatedAt,
+		&i.Customer,
 	)
 	return i, err
 }
 
 const getEventByIdempotencyKey = `-- name: GetEventByIdempotencyKey :one
-SELECT id, project_id, event_type, payload, idempotency_key, created_at,
+SELECT id, project_id, event_type, payload, idempotency_key, created_at, customer,
        (event_type = $1::text
-        AND payload = $2::jsonb)::boolean AS matches
+        AND payload = $2::jsonb
+        AND customer IS NOT DISTINCT FROM $3::text)::boolean AS matches
 FROM events
-WHERE project_id = $3 AND idempotency_key = $4::text
+WHERE project_id = $4 AND idempotency_key = $5::text
 `
 
 type GetEventByIdempotencyKeyParams struct {
 	EventType      string
 	Payload        []byte
+	Customer       pgtype.Text
 	ProjectID      pgtype.UUID
 	IdempotencyKey string
 }
@@ -99,6 +103,7 @@ type GetEventByIdempotencyKeyRow struct {
 	Payload        []byte
 	IdempotencyKey pgtype.Text
 	CreatedAt      pgtype.Timestamptz
+	Customer       pgtype.Text
 	Matches        bool
 }
 
@@ -106,6 +111,7 @@ func (q *Queries) GetEventByIdempotencyKey(ctx context.Context, arg GetEventById
 	row := q.db.QueryRow(ctx, getEventByIdempotencyKey,
 		arg.EventType,
 		arg.Payload,
+		arg.Customer,
 		arg.ProjectID,
 		arg.IdempotencyKey,
 	)
@@ -117,16 +123,17 @@ func (q *Queries) GetEventByIdempotencyKey(ctx context.Context, arg GetEventById
 		&i.Payload,
 		&i.IdempotencyKey,
 		&i.CreatedAt,
+		&i.Customer,
 		&i.Matches,
 	)
 	return i, err
 }
 
 const insertEvent = `-- name: InsertEvent :one
-INSERT INTO events (project_id, event_type, payload, idempotency_key)
-VALUES ($1, $2, $3, $4)
+INSERT INTO events (project_id, event_type, payload, idempotency_key, customer)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (project_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
-RETURNING id, project_id, event_type, payload, idempotency_key, created_at
+RETURNING id, project_id, event_type, payload, idempotency_key, created_at, customer
 `
 
 type InsertEventParams struct {
@@ -134,6 +141,7 @@ type InsertEventParams struct {
 	EventType      string
 	Payload        []byte
 	IdempotencyKey pgtype.Text
+	Customer       pgtype.Text
 }
 
 func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) (Event, error) {
@@ -142,6 +150,7 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) (Event
 		arg.EventType,
 		arg.Payload,
 		arg.IdempotencyKey,
+		arg.Customer,
 	)
 	var i Event
 	err := row.Scan(
@@ -151,22 +160,25 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) (Event
 		&i.Payload,
 		&i.IdempotencyKey,
 		&i.CreatedAt,
+		&i.Customer,
 	)
 	return i, err
 }
 
 const listEventsByProject = `-- name: ListEventsByProject :many
-SELECT id, project_id, event_type, payload, idempotency_key, created_at
+SELECT id, project_id, event_type, payload, idempotency_key, created_at, customer
 FROM events
 WHERE project_id = $1
   AND ($2::text IS NULL OR event_type = $2::text)
+  AND ($3::text IS NULL OR customer = $3::text)
 ORDER BY created_at DESC, id DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListEventsByProjectParams struct {
 	ProjectID pgtype.UUID
 	EventType pgtype.Text
+	Customer  pgtype.Text
 	Offset    int32
 	Limit     int32
 }
@@ -175,6 +187,7 @@ func (q *Queries) ListEventsByProject(ctx context.Context, arg ListEventsByProje
 	rows, err := q.db.Query(ctx, listEventsByProject,
 		arg.ProjectID,
 		arg.EventType,
+		arg.Customer,
 		arg.Offset,
 		arg.Limit,
 	)
@@ -192,6 +205,7 @@ func (q *Queries) ListEventsByProject(ctx context.Context, arg ListEventsByProje
 			&i.Payload,
 			&i.IdempotencyKey,
 			&i.CreatedAt,
+			&i.Customer,
 		); err != nil {
 			return nil, err
 		}

@@ -21,6 +21,7 @@ type eventHandler struct {
 type ingestEventRequest struct {
 	EventType string          `json:"event_type"`
 	Payload   json.RawMessage `json:"payload"`
+	Customer  *string         `json:"customer"`
 }
 
 type eventResponse struct {
@@ -29,6 +30,7 @@ type eventResponse struct {
 	EventType      string          `json:"event_type"`
 	Payload        json.RawMessage `json:"payload"`
 	IdempotencyKey *string         `json:"idempotency_key"`
+	Customer       *string         `json:"customer"`
 	CreatedAt      string          `json:"created_at"`
 }
 
@@ -49,6 +51,7 @@ func (h eventHandler) ingest(c fiber.Ctx) error {
 	result, err := h.events.Ingest(c.Context(), principalFrom(c), projectID, application.IngestInput{
 		EventType:      req.EventType,
 		Payload:        req.Payload,
+		Customer:       req.Customer,
 		IdempotencyKey: c.Get(headerIdempotencyKey),
 	})
 	if err != nil {
@@ -70,7 +73,7 @@ func (h eventHandler) list(c fiber.Ctx) error {
 	if err != nil {
 		return writeError(c, application.ErrInvalidInput)
 	}
-	filter := application.EventFilter{EventType: c.Query("event_type")}
+	filter := application.EventFilter{EventType: c.Query("event_type"), Customer: optionalString(c.Query("customer"))}
 	page, err := h.events.List(c.Context(), principalFrom(c), projectID, filter, pageParams(c))
 	if err != nil {
 		return writeError(c, err)
@@ -97,6 +100,7 @@ func mapEvent(event domain.Event) eventResponse {
 		EventType:      event.EventType,
 		Payload:        event.Payload,
 		IdempotencyKey: event.IdempotencyKey,
+		Customer:       event.Customer,
 		CreatedAt:      formatTime(event.CreatedAt),
 	}
 }

@@ -14,5 +14,7 @@ type Event struct {
 	EventType      string
 	Payload        json.RawMessage
 	IdempotencyKey *string
-	CreatedAt      time.Time
+	// Customer is the integrator's identifier of who the event is for.
+	Customer  *string
+	CreatedAt time.Time
 }

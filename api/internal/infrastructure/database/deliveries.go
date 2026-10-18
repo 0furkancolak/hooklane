@@ -22,6 +22,7 @@ func (s *Store) GetDelivery(ctx context.Context, id uuid.UUID) (domain.Delivery,
 	d := mapDelivery(row.ID, row.EventID, row.EndpointID, row.Status, row.AttemptCount, row.NextAttemptAt,
 		row.LastResponseStatus, row.LastError, row.ReplayOf, row.CreatedAt, row.UpdatedAt)
 	d.OrganizationID = pgToUUID(row.OrganizationID)
+	d.EndpointCustomer = textFromPg(row.EndpointCustomer)
 	return d, nil
 }
 
@@ -59,6 +60,7 @@ func (s *Store) ListDeliveriesByProject(ctx context.Context, projectID uuid.UUID
 	if filter.EndpointID != nil {
 		params.EndpointID = uuidToPg(*filter.EndpointID)
 	}
+	params.Customer = textPtr(filter.Customer)
 	rows, err := s.q(ctx).ListDeliveriesByProject(ctx, params)
 	if err != nil {
 		return nil, err

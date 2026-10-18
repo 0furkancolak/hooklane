@@ -84,6 +84,7 @@ func (s *BootstrapService) Bootstrap(ctx context.Context, in BootstrapInput) (Bo
 			Name:           in.KeyName,
 			Prefix:         prefix,
 			Hash:           hash,
+			Scopes:         []domain.Scope{domain.ScopeAdmin},
 		})
 		if err != nil {
 			return err

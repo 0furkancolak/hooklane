@@ -52,7 +52,8 @@ func newTestEnv(t *testing.T, env config.AppEnv, opts ...Option) testEnv {
 	}
 	cfg := config.Config{Port: "8080", AppEnv: env}
 	server := NewServer(cfg, Services{
-		Auth:       application.NewAuthenticator(store.Keys()),
+		Auth:       application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()),
+		Portal:     application.NewPortalService(store.Projects(), store.PortalTokens()),
 		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
 		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: cfg.AllowInsecureHTTP(), Destinations: application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()}}),
 		Events:     application.NewEventService(store.Projects(), store.Events(), store.Deliveries(), store),

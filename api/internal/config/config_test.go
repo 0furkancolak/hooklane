@@ -135,3 +135,24 @@ func TestLoadRateLimit(t *testing.T) {
 		t.Fatal("RATE_LIMIT_BURST=0 was accepted")
 	}
 }
+
+func TestLoadLogFormat(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://hooklane:dev@localhost:5432/hooklane?sslmode=disable")
+	for _, tc := range []struct{ env, format, want string }{
+		{"development", "", "pretty"},
+		{"production", "", "json"},
+		{"production", "pretty", "pretty"},
+		{"development", "JSON", "json"},
+	} {
+		t.Setenv("APP_ENV", tc.env)
+		t.Setenv("LOG_FORMAT", tc.format)
+		cfg, err := Load()
+		if err != nil || cfg.LogFormat != tc.want {
+			t.Fatalf("%+v: got %q, %v", tc, cfg.LogFormat, err)
+		}
+	}
+	t.Setenv("LOG_FORMAT", "xml")
+	if _, err := Load(); err == nil {
+		t.Fatal("unknown LOG_FORMAT was accepted")
+	}
+}
