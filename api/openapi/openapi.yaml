@@ -11,6 +11,9 @@ info:
     List routes are newest first and paginated with `limit` (1–100, default
     50) and `offset`. `next_offset` is `null` on the last page.
 
+    Requests are limited per client address. Over the limit the API answers
+    `429` with code `rate_limited` and a `Retry-After` header in seconds.
+
     Every response carries `X-Request-ID`. Errors use the envelope
     `{"error": {"code", "message"}}`.
   license:

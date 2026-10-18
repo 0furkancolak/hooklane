@@ -30,6 +30,8 @@ services:
       DATABASE_URL: postgres://hooklane:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/hooklane?sslmode=disable
       ENDPOINT_SECRET_KEY: ${ENDPOINT_SECRET_KEY:-}
       RETENTION_PERIOD: ${RETENTION_PERIOD:-720h}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-50}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-200}
     depends_on:
       postgres:
         condition: service_healthy

@@ -66,6 +66,8 @@ startup with a message naming the variable.
 | `ENDPOINT_SECRET_KEY` | (required by API and worker) | api, worker | Base64 of 32 random bytes; encrypts endpoint signing secrets (AES-256-GCM). |
 | `METRICS_ADDR` | (off) | api, worker | Separate listener for `/metrics`, `/healthz`, `/readyz`, e.g. `0.0.0.0:9101`. Do not expose it publicly. |
 | `RETENTION_PERIOD` | `720h` | worker, admin | Delete finished events older than this; `0` disables. Minimum `1h`. |
+| `RATE_LIMIT_RPS` | `50` | api | Sustained requests per second per client address on `/v1`; `0` disables. Answers `429` with `Retry-After`. Each replica keeps its own counters, and forwarded headers are not trusted, so behind a reverse proxy limit there as well. |
+| `RATE_LIMIT_BURST` | `200` | api | Requests a client may send at once before `RATE_LIMIT_RPS` applies. |
 
 ### API
 
