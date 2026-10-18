@@ -7,6 +7,7 @@ import { Icon, type IconName } from "../shared/ui/Icon";
 import { useTheme } from "../shared/theme";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { OverviewPage } from "../features/projects/OverviewPage";
+import { PlaygroundPage } from "../features/playground/PlaygroundPage";
 import { EndpointsPage } from "../features/endpoints/EndpointsPage";
 import { APIKeysPage } from "../features/apikeys/APIKeysPage";
 import { EventsPage } from "../features/events/EventsPage";
@@ -31,15 +32,15 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
           </span>
           {productName}
         </a>
-        {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <p className="nav-hint">Pick a project to see its endpoints, events and deliveries.</p>}
+        {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <HomeNav />}
         <div className="sidebar-foot">
-          <button type="button" className="button button-ghost" onClick={toggleTheme}>
+          <button type="button" className="button button-ghost" onClick={toggleTheme} aria-label="Switch theme">
             <Icon name={theme === "dark" ? "sun" : "moon"} />
-            {theme === "dark" ? "Light theme" : "Dark theme"}
+            <span className="btn-label">{theme === "dark" ? "Light theme" : "Dark theme"}</span>
           </button>
-          <button type="button" className="button button-ghost signout" onClick={onSignOut}>
+          <button type="button" className="button button-ghost signout" onClick={onSignOut} aria-label="Sign out">
             <Icon name="logout" />
-            Sign out
+            <span className="btn-label">Sign out</span>
           </button>
         </div>
       </aside>
@@ -57,6 +58,7 @@ const pageTitles: Record<Route["name"], string> = {
   projects: "Projects",
   overview: "Overview",
   endpoints: "Endpoints",
+  playground: "Playground",
   api_keys: "API keys",
   events: "Events",
   event: "Event",
@@ -87,9 +89,32 @@ function Topbar({ route, projectId, projectName }: { route: Route; projectId: st
   );
 }
 
+function HomeNav() {
+  return (
+    <nav aria-label="Main" className="project-nav">
+      <ul className="nav">
+        <li>
+          <a href={href("projects")} aria-current="page">
+            <Icon name="overview" />
+            Projects
+          </a>
+        </li>
+        <li>
+          <a href="/openapi.yaml" target="_blank" rel="noreferrer">
+            <Icon name="events" />
+            API reference
+          </a>
+        </li>
+      </ul>
+      <p className="nav-hint">Open a project to see its playground, endpoints, events and deliveries.</p>
+    </nav>
+  );
+}
+
 function ProjectNav({ projectId, projectName, route }: { projectId: string; projectName: string | null; route: Route }) {
   const items: { label: string; icon: IconName; target: string; active: boolean }[] = [
     { label: "Overview", icon: "overview", target: href("projects", projectId), active: route.name === "overview" },
+    { label: "Playground", icon: "play", target: href("projects", projectId, "playground"), active: route.name === "playground" },
     { label: "Endpoints", icon: "endpoints", target: href("projects", projectId, "endpoints"), active: route.name === "endpoints" },
     { label: "Events", icon: "events", target: href("projects", projectId, "events"), active: route.name === "events" || route.name === "event" },
     { label: "Deliveries", icon: "deliveries", target: href("projects", projectId, "deliveries"), active: route.name === "deliveries" || route.name === "delivery" },
@@ -125,6 +150,8 @@ function Page({ route }: { route: Route }) {
       return <ProjectsPage />;
     case "overview":
       return <OverviewPage projectId={route.projectId} />;
+    case "playground":
+      return <PlaygroundPage projectId={route.projectId} />;
     case "endpoints":
       return <EndpointsPage projectId={route.projectId} />;
     case "api_keys":

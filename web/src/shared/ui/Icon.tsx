@@ -70,6 +70,11 @@ const paths = {
     </>
   ),
   loader: <path d="M12 2v4m0 12v4M4.9 4.9l2.8 2.8m8.6 8.6 2.8 2.8M2 12h4m12 0h4M4.9 19.1l2.8-2.8m8.6-8.6 2.8-2.8" />,
+  play: <path d="M7 4.5v15l12-7.5-12-7.5Z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  shield: <path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z" />,
+  repeat: <path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3" />,
+  search: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-4-4" />,
   swap: <path d="M7 4 3 8l4 4M3 8h18M17 20l4-4-4-4m4 4H3" />,
 } satisfies Record<string, ReactNode>;
 

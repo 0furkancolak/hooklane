@@ -102,8 +102,12 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	// Development only, and deliberately missing from openapi.yaml.
 	if cfg.AppEnv == config.AppEnvDevelopment && svc.DevKeys != nil {
 		dev := devKeyHandler{keys: svc.DevKeys}
-		v1.Get("/dev", dev.status)
 		v1.Post("/dev/api-keys", dev.issue)
+
+		sink := newDevSink("http://127.0.0.1:" + cfg.Port + "/v1/dev/sink")
+		v1.Get("/dev", sink.status)
+		v1.Post("/dev/sink/:token", sink.receive)
+		v1.Get("/dev/sink/:token", sink.list)
 	}
 
 	if o.dashboardDir != "" {

@@ -8,8 +8,10 @@ import type {
   DeliveryStatus,
   Endpoint,
   HooklaneEvent,
+  IngestedEvent,
   Page,
   Project,
+  SinkRequest,
 } from "./types";
 
 /** An error response from the API: `{"error": {"code", "message"}}`. */
@@ -49,6 +51,10 @@ export class ApiClient {
     return this.get<Page<"projects", Project>>(`/v1/projects${query(page)}`, signal);
   }
 
+  createProject(name: string) {
+    return this.send<Project>("POST", "/v1/projects", { name });
+  }
+
   getProject(id: string, signal?: AbortSignal) {
     return this.get<Project>(`/v1/projects/${seg(id)}`, signal);
   }
@@ -83,6 +89,10 @@ export class ApiClient {
 
   listEvents(projectId: string, params: PageParams & { event_type?: string } = {}, signal?: AbortSignal) {
     return this.get<Page<"events", HooklaneEvent>>(`/v1/projects/${seg(projectId)}/events${query(params)}`, signal);
+  }
+
+  ingestEvent(projectId: string, event: { event_type: string; payload: unknown }) {
+    return this.send<IngestedEvent>("POST", `/v1/projects/${seg(projectId)}/events`, event);
   }
 
   getEvent(id: string, signal?: AbortSignal) {
@@ -174,12 +184,27 @@ export const publicApi = {
   },
 
   async developmentMode(signal?: AbortSignal): Promise<boolean> {
+    return (await publicApi.developmentInfo(signal)) !== null;
+  },
+
+  /** The development status, or null when the API is not in development mode. */
+  async developmentInfo(signal?: AbortSignal): Promise<{ sinkUrl: string } | null> {
     try {
       const response = await fetch("/v1/dev", { cache: "no-store", signal });
-      const data = response.ok ? (safeJSON(await response.text()) as { development?: boolean } | undefined) : undefined;
-      return data?.development === true;
+      const data = response.ok ? (safeJSON(await response.text()) as { development?: boolean; sink_url?: string } | undefined) : undefined;
+      return data?.development === true ? { sinkUrl: data.sink_url ?? "" } : null;
     } catch {
-      return false;
+      return null;
+    }
+  },
+
+  async sinkRequests(token: string, signal?: AbortSignal): Promise<SinkRequest[]> {
+    try {
+      const response = await fetch(`/v1/dev/sink/${encodeURIComponent(token)}`, { cache: "no-store", signal });
+      const data = response.ok ? (safeJSON(await response.text()) as { requests?: SinkRequest[] } | undefined) : undefined;
+      return data?.requests ?? [];
+    } catch {
+      return [];
     }
   },
 

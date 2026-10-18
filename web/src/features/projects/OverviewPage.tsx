@@ -45,6 +45,21 @@ function Stats({ projectId, stats }: { projectId: string; stats: DeliveryStats }
 
   return (
     <>
+      {total === 0 && (
+        <div className="panel hero">
+          <div>
+            <h2>Nothing has been delivered yet</h2>
+            <p className="muted">
+              Send a test event from the playground to see Hooklane deliver, retry and log a webhook. Then wire your own app to{" "}
+              <code>POST /v1/projects/{projectId.slice(0, 8)}…/events</code>.
+            </p>
+          </div>
+          <a className="button button-primary" href={href("projects", projectId, "playground")}>
+            <Icon name="play" size={16} />
+            Open the playground
+          </a>
+        </div>
+      )}
       <div className="stats">
         {tiles.map((tile) => (
           <Stat

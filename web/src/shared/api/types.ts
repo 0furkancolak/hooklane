@@ -16,6 +16,18 @@ export type Endpoint = {
   updated_at: string;
 };
 
+export type IngestedEvent = HooklaneEvent & { delivery_count: number };
+
+/** A webhook captured by the development-only built-in receiver. */
+export type SinkRequest = {
+  received_at: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string;
+  truncated: boolean;
+  status: number;
+};
+
 export type CreatedEndpoint = Endpoint & { secret: string };
 
 export type APIKey = {

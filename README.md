@@ -215,11 +215,21 @@ curl -X POST localhost:8090/v1/projects/$PROJECT_ID/events \
 
 The light theme follows your system setting and can be switched in the sidebar.
 
+### Try it without writing code: the playground
+
+Open a project and choose **Playground**. It walks through the whole flow with real data: pick a receiver, write an event (or start from a template), send it, and watch the delivery, each attempt and what the receiver actually got, including the `webhook-signature` header. With `APP_ENV=development` there is a built-in receiver (it can answer `200` or `503`, so you can watch retries); otherwise give it any public URL, for example one from webhook.site.
+
+![Playground, dark theme](docs/screenshots/playground-dark.png)
+
+New installs also get a short "What is Hooklane for?" explanation on the Projects page, where you can create projects.
+
 ![Overview, light theme](docs/screenshots/overview-light.png)
 
 The dashboard signs in with an API key and only calls the documented `/v1` API, so it can see exactly what the key's organization can see.
 
-- **Projects and overview**: delivery counts by status, with links to filtered lists, and a warning when due deliveries are waiting for a worker.
+- **Projects**: create projects, and read what Hooklane is for and why to use it.
+- **Overview**: delivery counts by status, with links to filtered lists, and a warning when due deliveries are waiting for a worker.
+- **Playground**: send a test event and follow it through delivery, retries and the receiver.
 - **Endpoints**: add an endpoint (the signing secret is shown once, with a copy button), edit its URL, enable or disable it, and reveal the secret on request. Blocked destinations are explained.
 - **Events**: filter by type, then open an event to see its payload and every delivery, including replays.
 - **Deliveries**: filter by status or endpoint (filters live in the URL, so views can be shared), page through history, and open a delivery to see each attempt's status code, response excerpt, error and duration.

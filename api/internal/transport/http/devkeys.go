@@ -15,10 +15,6 @@ type devKeyHandler struct {
 	keys *application.DevelopmentKeyService
 }
 
-func (h devKeyHandler) status(c fiber.Ctx) error {
-	return c.JSON(fiber.Map{"development": true})
-}
-
 func (h devKeyHandler) issue(c fiber.Ctx) error {
 	if ip := net.ParseIP(c.IP()); ip == nil || !ip.IsLoopback() {
 		return writeError(c, application.ErrForbidden)

@@ -5,6 +5,7 @@ export type Route =
   | { name: "projects" }
   | { name: "overview"; projectId: string }
   | { name: "endpoints"; projectId: string }
+  | { name: "playground"; projectId: string }
   | { name: "api_keys"; projectId: string }
   | { name: "events"; projectId: string }
   | { name: "event"; projectId: string; eventId: string }
@@ -31,6 +32,8 @@ export function parseRoute(hash: string): Route {
       return { name: "overview", projectId };
     case "endpoints":
       return id === undefined ? { name: "endpoints", projectId } : { name: "not_found" };
+    case "playground":
+      return id === undefined ? { name: "playground", projectId } : { name: "not_found" };
     case "api-keys":
       return id === undefined ? { name: "api_keys", projectId } : { name: "not_found" };
     case "events":

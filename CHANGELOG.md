@@ -9,6 +9,8 @@ include breaking changes, which are called out.
 
 ### Added
 
+- Playground: a guided page in every project that creates an endpoint, sends a test event and shows its deliveries, attempts and the request the receiver got. With `APP_ENV=development` it has a built-in receiver (`/v1/dev/sink/{token}`, which can simulate failures with `?status=`), and the dashboard can create projects.
+- A "What is Hooklane for?" section on the Projects page explains the purpose and benefits, and an empty project points to the playground.
 - Rate limiting on `/v1`: a token bucket per client address (`RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`; `0` disables) that answers `429` with `Retry-After`.
 - Redesigned dashboard: card layout, lime accent, icon navigation, breadcrumbs, a delivery health overview with recent deliveries, and a light/dark theme switch.
 - `make check` runs gofmt, golangci-lint, the TypeScript typecheck, oxlint, all tests and govulncheck; CI runs the same checks.
