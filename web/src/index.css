@@ -532,9 +532,8 @@ textarea {
   margin: 0 0 20px;
   padding: 12px 16px;
   border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--warn);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--surface-3);
 }
 
 /* ---------- Surfaces ---------- */
@@ -674,10 +673,6 @@ a.card:hover {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.secret {
-  border-left: 3px solid var(--warn);
 }
 
 .secret-value {
