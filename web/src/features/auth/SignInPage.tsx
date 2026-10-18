@@ -2,19 +2,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ApiClient, publicApi } from "../../shared/api/client";
 import { describeError } from "../../shared/errors";
 import { looksLikeAPIKey } from "../../shared/session";
-import { productName, productTagline } from "../../shared/product";
+import { productName } from "../../shared/product";
+import { languages, t, useLang } from "../../shared/i18n";
 import { CopyButton } from "../../shared/ui/CopyButton";
 
-const features: { title: string; text: string }[] = [
-  { title: "Signed deliveries", text: "Every request carries a webhook-signature header your receivers can verify." },
-  { title: "Retries and dead letters", text: "Failed deliveries back off and retry; the ones that never succeed are kept for review." },
-  { title: "Full history and replay", text: "See each attempt's status, response and timing, and replay any finished delivery." },
-  { title: "Projects and API keys", text: "Separate endpoints and events per project, each with its own keys." },
-];
+const features = [1, 2, 3, 4];
 
 type ApiState = "checking" | "ready" | "down";
 
 export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) => void; notice?: string }) {
+  const { lang, setLang } = useLang();
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -36,7 +33,7 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
     event.preventDefault();
     const trimmed = key.trim();
     if (!looksLikeAPIKey(trimmed)) {
-      setError("That does not look like a Hooklane API key (hlk_ followed by 64 hex characters).");
+      setError(t("signin.malformed"));
       return;
     }
     setChecking(true);
@@ -46,7 +43,7 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
       await new ApiClient(trimmed).listProjects({ limit: 1 });
       onSignedIn(trimmed);
     } catch (err) {
-      setError(err instanceof Error ? describeSignInError(err) : "Sign-in failed.");
+      setError(err instanceof Error ? describeSignInError(err) : t("signin.failed"));
     } finally {
       setChecking(false);
     }
@@ -54,39 +51,43 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
 
   return (
     <main className="signin">
+      <div className="segmented signin-lang" role="group" aria-label={t("nav.language")}>
+        {languages.map((l) => (
+          <button key={l.code} type="button" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>
+            {l.label}
+          </button>
+        ))}
+      </div>
       <div className="signin-layout">
         <section className="signin-intro" aria-labelledby="product-name">
-          <p className="eyebrow">{productTagline}</p>
+          <p className="eyebrow">{t("signin.tagline")}</p>
           <h1 id="product-name">{productName}</h1>
-          <p className="lead">
-            Send events to one API. {productName} delivers them to your endpoints with signed requests, retries and a complete delivery
-            history.
-          </p>
+          <p className="lead">{t("signin.lead", { name: productName })}</p>
           <ul className="features">
-            {features.map((feature) => (
-              <li key={feature.title}>
-                <strong>{feature.title}</strong>
-                <span className="hint">{feature.text}</span>
+            {features.map((n) => (
+              <li key={n}>
+                <strong>{t(`signin.feature${n}.title` as never)}</strong>
+                <span className="hint">{t(`signin.feature${n}.text` as never)}</span>
               </li>
             ))}
           </ul>
           <div className="signin-meta">
             <ApiStatus state={api} />
             <a href="/openapi.yaml" target="_blank" rel="noreferrer">
-              API reference (OpenAPI)
+              {t("signin.apiReference")}
             </a>
           </div>
         </section>
 
         <div className="signin-side">
           <form className="panel signin-panel" onSubmit={submit}>
-            <h2>Sign in</h2>
+            <h2>{t("signin.title")}</h2>
             {notice && (
               <p className="notice" role="status">
                 {notice}
               </p>
             )}
-            <label htmlFor="api-key">API key</label>
+            <label htmlFor="api-key">{t("signin.keyLabel")}</label>
             <input
               id="api-key"
               type="password"
@@ -102,19 +103,18 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
               </p>
             )}
             <button type="submit" className="button button-primary" disabled={checking || key.trim() === ""}>
-              {checking ? "Checking…" : "Sign in"}
+              {checking ? t("common.checking") : t("signin.submit")}
             </button>
-            <p className="hint">The key is kept in this tab's session storage only and is sent solely to this {productName} API.</p>
+            <p className="hint">{t("signin.keyNote", { name: productName })}</p>
           </form>
 
           {development ? (
             <DevelopmentKey onUse={onSignedIn} />
           ) : (
             <div className="panel signin-help">
-              <h2>No key yet?</h2>
+              <h2>{t("signin.noKey")}</h2>
               <p className="hint">
-                Create the first one on the server with <code>hooklane-admin bootstrap</code>. Once signed in, generate more keys from a
-                project's <strong>API keys</strong> page.
+                {t("signin.noKeyText")} <code>hooklane-admin bootstrap</code>
               </p>
             </div>
           )}
@@ -125,7 +125,7 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
 }
 
 function ApiStatus({ state }: { state: ApiState }) {
-  const label = state === "checking" ? "Checking the API…" : state === "ready" ? "API is ready" : "API is not reachable";
+  const label = state === "checking" ? t("signin.apiChecking") : state === "ready" ? t("signin.apiReady") : t("signin.apiDown");
   return (
     <span className={`api-status api-status-${state}`} role="status">
       <span className="dot" aria-hidden="true" />
@@ -145,7 +145,7 @@ function DevelopmentKey({ onUse }: { onUse: (key: string) => void }) {
     try {
       setRawKey((await publicApi.issueDevelopmentKey()).raw_key);
     } catch (err) {
-      setError(err instanceof Error ? describeError(err) : "Could not generate a key.");
+      setError(err instanceof Error ? describeError(err) : t("signin.devFailed"));
     } finally {
       setBusy(false);
     }
@@ -153,27 +153,24 @@ function DevelopmentKey({ onUse }: { onUse: (key: string) => void }) {
 
   return (
     <div className="panel signin-help">
-      <p className="eyebrow">Development mode</p>
-      <h2>No key yet?</h2>
+      <p className="eyebrow">{t("signin.devMode")}</p>
+      <h2>{t("signin.noKey")}</h2>
       {rawKey ? (
         <>
-          <p className="hint">Copy this key if you want to call the API yourself; it will not be shown again.</p>
+          <p className="hint">{t("signin.devCopy")}</p>
           <code className="secret-value">{rawKey}</code>
           <div className="actions">
             <CopyButton value={rawKey} />
             <button type="button" className="button button-primary" onClick={() => onUse(rawKey)}>
-              Continue to dashboard
+              {t("signin.devContinue")}
             </button>
           </div>
         </>
       ) : (
         <>
-          <p className="hint">
-            This API runs with <code>APP_ENV=development</code>, so this machine can generate a key for the first project without the
-            admin CLI.
-          </p>
+          <p className="hint">{t("signin.devText")}</p>
           <button type="button" className="button" disabled={busy} onClick={() => void generate()}>
-            {busy ? "Generating…" : "Generate a development key"}
+            {busy ? t("common.generating") : t("signin.devGenerate")}
           </button>
         </>
       )}
@@ -189,7 +186,7 @@ function DevelopmentKey({ onUse }: { onUse: (key: string) => void }) {
 function describeSignInError(error: Error): string {
   const message = describeError(error);
   if ("status" in error && (error as { status: number }).status === 401) {
-    return "The API rejected this key. It may be revoked or mistyped.";
+    return t("signin.rejected");
   }
   return message;
 }

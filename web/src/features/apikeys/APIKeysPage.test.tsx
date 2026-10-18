@@ -58,7 +58,7 @@ describe("APIKeysPage", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    expect(await screen.findByText("revoked")).toBeInTheDocument();
+    expect(await screen.findByText("Revoked")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
     expect(confirm).toHaveBeenCalledTimes(2);
   });

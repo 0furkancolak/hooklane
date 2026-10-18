@@ -3,6 +3,7 @@ package http
 import (
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,7 +84,7 @@ func (l *rateLimiter) sweep(now time.Time) {
 // to limit instead, since forwarded headers are not trusted here.
 func rateLimit(limiter *rateLimiter) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		ok, wait := limiter.allow(c.IP())
+		ok, wait := limiter.allow(strings.Clone(c.IP()))
 		if ok {
 			return c.Next()
 		}

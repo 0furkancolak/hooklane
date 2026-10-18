@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { describeError } from "../errors";
+import { t } from "../i18n";
 
-export function Loading({ label = "Loading…" }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
   return (
     <p className="state" role="status" aria-live="polite">
-      {label}
+      {label ?? t("common.loading")}
     </p>
   );
 }
@@ -15,7 +16,7 @@ export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => v
       <p>{describeError(error)}</p>
       {onRetry && (
         <button type="button" className="button" onClick={onRetry}>
-          Try again
+          {t("common.retry")}
         </button>
       )}
     </div>

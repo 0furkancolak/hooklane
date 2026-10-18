@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 export type Route =
   | { name: "projects" }
   | { name: "overview"; projectId: string }
-  | { name: "endpoints"; projectId: string }
+  | { name: "endpoints"; projectId: string; query: URLSearchParams }
+  | { name: "playground"; projectId: string }
   | { name: "api_keys"; projectId: string }
-  | { name: "events"; projectId: string }
+  | { name: "events"; projectId: string; query: URLSearchParams }
   | { name: "event"; projectId: string; eventId: string }
   | { name: "deliveries"; projectId: string; query: URLSearchParams }
   | { name: "delivery"; projectId: string; deliveryId: string }
@@ -30,11 +31,13 @@ export function parseRoute(hash: string): Route {
     case undefined:
       return { name: "overview", projectId };
     case "endpoints":
-      return id === undefined ? { name: "endpoints", projectId } : { name: "not_found" };
+      return id === undefined ? { name: "endpoints", projectId, query: new URLSearchParams(search) } : { name: "not_found" };
+    case "playground":
+      return id === undefined ? { name: "playground", projectId } : { name: "not_found" };
     case "api-keys":
       return id === undefined ? { name: "api_keys", projectId } : { name: "not_found" };
     case "events":
-      return id === undefined ? { name: "events", projectId } : { name: "event", projectId, eventId: id };
+      return id === undefined ? { name: "events", projectId, query: new URLSearchParams(search) } : { name: "event", projectId, eventId: id };
     case "deliveries":
       return id === undefined
         ? { name: "deliveries", projectId, query: new URLSearchParams(search) }

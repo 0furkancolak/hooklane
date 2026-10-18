@@ -4,6 +4,9 @@ import type { APIKey } from "../../shared/api/types";
 import { useAsync } from "../../shared/useAsync";
 import { formatTime } from "../../shared/format";
 import { describeError } from "../../shared/errors";
+import { t } from "../../shared/i18n";
+import { Icon } from "../../shared/ui/Icon";
+import { PageHeader } from "../../shared/ui/PageHeader";
 import { Empty, ErrorState, Loading } from "../../shared/ui/States";
 import { CopyButton } from "../../shared/ui/CopyButton";
 
@@ -14,23 +17,34 @@ export function APIKeysPage({ projectId }: { projectId: string }) {
 
   return (
     <section>
-      <h1>API keys</h1>
-      <p className="hint">Any key of this organization can manage all of its projects. The full key is shown only once, right after it is generated.</p>
-      <CreateAPIKey
-        projectId={projectId}
-        onCreated={(key) => {
-          setCreated(key);
-          reload();
-        }}
+      <PageHeader
+        title={t("nav.apiKeys")}
+        subtitle={t("apikeys.subtitle")}
+        actions={
+          <button type="button" className="button" onClick={reload}>
+            <Icon name="refresh" size={15} />
+            {t("common.refresh")}
+          </button>
+        }
       />
+      <div className="panel">
+        <h2>{t("apikeys.generateTitle")}</h2>
+        <CreateAPIKey
+          projectId={projectId}
+          onCreated={(key) => {
+            setCreated(key);
+            reload();
+          }}
+        />
+      </div>
       {created && <RawKeyNotice name={created.name} rawKey={created.rawKey} onDismiss={() => setCreated(null)} />}
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
       {state.status === "ready" &&
         (state.data.api_keys.length === 0 ? (
-          <Empty title="No API keys yet">Generate a key for each service or person that calls the Hooklane API.</Empty>
+          <Empty title={t("apikeys.none")}>{t("apikeys.noneHint")}</Empty>
         ) : (
-          <ul className="rows">
+          <ul className="rows panel panel-flush">
             {state.data.api_keys.map((key) => (
               <APIKeyRow key={key.id} apiKey={key} onChanged={reload} />
             ))}
@@ -55,7 +69,7 @@ function CreateAPIKey({ projectId, onCreated }: { projectId: string; onCreated: 
       setName("");
       onCreated({ name: key.name, rawKey: key.raw_key });
     } catch (err) {
-      setError(err instanceof Error ? describeError(err) : "Could not generate the API key.");
+      setError(err instanceof Error ? describeError(err) : t("apikeys.createFailed"));
     } finally {
       setBusy(false);
     }
@@ -64,11 +78,11 @@ function CreateAPIKey({ projectId, onCreated }: { projectId: string; onCreated: 
   return (
     <form className="inline-form" onSubmit={submit}>
       <label htmlFor="api-key-name" className="sr-only">
-        Key name
+        {t("apikeys.nameLabel")}
       </label>
-      <input id="api-key-name" required maxLength={200} placeholder="Key name, e.g. billing-service" value={name} onChange={(e) => setName(e.target.value)} />
+      <input id="api-key-name" required maxLength={200} placeholder={t("apikeys.namePlaceholder")} value={name} onChange={(e) => setName(e.target.value)} />
       <button type="submit" className="button button-primary" disabled={busy || name.trim() === ""}>
-        {busy ? "Generating…" : "Generate API key"}
+        {busy ? t("common.generating") : t("apikeys.generate")}
       </button>
       {error && (
         <p className="field-error" role="alert">
@@ -83,13 +97,13 @@ function RawKeyNotice({ name, rawKey, onDismiss }: { name: string; rawKey: strin
   return (
     <div className="panel secret" role="status">
       <p>
-        API key <strong>{name}</strong>. Copy it now and store it somewhere safe: it will not be shown again.
+        {t("apikeys.secretNotice", { name })}
       </p>
       <code className="secret-value">{rawKey}</code>
       <div className="actions">
         <CopyButton value={rawKey} />
         <button type="button" className="button" onClick={onDismiss}>
-          Done
+          {t("common.done")}
         </button>
       </div>
     </div>
@@ -102,7 +116,7 @@ function APIKeyRow({ apiKey, onChanged }: { apiKey: APIKey; onChanged: () => voi
   const [busy, setBusy] = useState(false);
 
   async function revoke() {
-    if (!window.confirm(`Revoke the API key "${apiKey.name}"? Requests using it will be rejected. If you signed in with it, you will be signed out.`)) {
+    if (!window.confirm(t("apikeys.revokeConfirm", { name: apiKey.name }))) {
       return;
     }
     setBusy(true);
@@ -111,7 +125,7 @@ function APIKeyRow({ apiKey, onChanged }: { apiKey: APIKey; onChanged: () => voi
       await api.revokeAPIKey(apiKey.id);
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? describeError(err) : "Could not revoke the API key.");
+      setError(err instanceof Error ? describeError(err) : t("apikeys.revokeFailed"));
     } finally {
       setBusy(false);
     }
@@ -123,8 +137,8 @@ function APIKeyRow({ apiKey, onChanged }: { apiKey: APIKey; onChanged: () => voi
         <strong>{apiKey.name}</strong>
         <div className="row-meta">
           <code>{apiKey.prefix}…</code>
-          <span className={`badge ${apiKey.revoked ? "badge-muted" : "badge-succeeded"}`}>{apiKey.revoked ? "revoked" : "active"}</span>
-          <span className="muted">Created {formatTime(apiKey.created_at)}</span>
+          <span className={`badge ${apiKey.revoked ? "badge-muted" : "badge-succeeded"}`}>{apiKey.revoked ? t("badge.revoked") : t("badge.active")}</span>
+          <span className="muted">{t("projects.created", { date: formatTime(apiKey.created_at) })}</span>
         </div>
         {error && (
           <p className="field-error" role="alert">
@@ -135,7 +149,7 @@ function APIKeyRow({ apiKey, onChanged }: { apiKey: APIKey; onChanged: () => voi
       {!apiKey.revoked && (
         <div className="actions">
           <button type="button" className="button" disabled={busy} onClick={() => void revoke()}>
-            Revoke
+            {t("apikeys.revoke")}
           </button>
         </div>
       )}

@@ -13,14 +13,14 @@ describe("DeliveriesPage", () => {
 
     expect(await screen.findByText(ids.delivery.slice(0, 8))).toBeInTheDocument();
     expect(calls[0].search).toContain("status=dead_letter");
-    await userEvent.click(screen.getByRole("button", { name: "Older" }));
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(window.location.hash).toBe(`#/projects/${ids.project}/deliveries?status=dead_letter&offset=25`);
   });
 
   it("changing the status filter resets paging", async () => {
     const { fetch } = fakeFetch({ [`GET /v1/projects/${ids.project}/deliveries`]: () => ({ body: page("deliveries", []) }) });
     renderWithApi(<DeliveriesPage projectId={ids.project} query={new URLSearchParams("offset=50")} />, fetch);
-    await userEvent.click(await screen.findByRole("button", { name: "succeeded" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Succeeded" }));
     expect(window.location.hash).toBe(`#/projects/${ids.project}/deliveries?status=succeeded`);
   });
 
@@ -36,5 +36,29 @@ describe("DeliveriesPage", () => {
     fail = false;
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.getByText("No deliveries")).toBeInTheDocument());
+  });
+});
+
+describe("DeliveriesPage pagination", () => {
+  it("keeps the page size in the URL and returns to the first page when it changes", async () => {
+    const { fetch, calls } = fakeFetch({
+      [`GET /v1/projects/${ids.project}/deliveries`]: () => ({ body: page("deliveries", [delivery()], 50) }),
+    });
+    renderWithApi(<DeliveriesPage projectId={ids.project} query={new URLSearchParams("offset=25&limit=25")} />, fetch);
+
+    expect(await screen.findByText("Page 2")).toBeInTheDocument();
+    expect(calls[0].search).toContain("offset=25");
+    await userEvent.selectOptions(screen.getByLabelText("Rows per page"), "50");
+    expect(window.location.hash).toBe(`#/projects/${ids.project}/deliveries?limit=50`);
+  });
+
+  it("goes back a page and offers a way to clear filters", async () => {
+    const { fetch } = fakeFetch({ [`GET /v1/projects/${ids.project}/deliveries`]: () => ({ body: page("deliveries", [delivery()]) }) });
+    renderWithApi(<DeliveriesPage projectId={ids.project} query={new URLSearchParams("status=succeeded&offset=25")} />, fetch);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Previous" }));
+    expect(window.location.hash).toBe(`#/projects/${ids.project}/deliveries?status=succeeded&offset=0`);
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(window.location.hash).toBe(`#/projects/${ids.project}/deliveries`);
   });
 });

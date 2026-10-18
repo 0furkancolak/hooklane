@@ -5,6 +5,9 @@ import { href, navigate } from "../../shared/router";
 import { useAsync } from "../../shared/useAsync";
 import { formatRelative, formatTime, shortId } from "../../shared/format";
 import { describeError } from "../../shared/errors";
+import { t } from "../../shared/i18n";
+import { Icon } from "../../shared/ui/Icon";
+import { PageHeader } from "../../shared/ui/PageHeader";
 import { Empty, ErrorState, Loading } from "../../shared/ui/States";
 import { HttpStatus, StatusBadge } from "../../shared/ui/StatusBadge";
 
@@ -21,31 +24,37 @@ export function DeliveryDetailPage({ projectId, deliveryId }: { projectId: strin
   return (
     <section>
       <p className="crumbs">
-        <a href={href("projects", projectId, "deliveries")}>Deliveries</a> / <code>{deliveryId}</code>
+        <a href={href("projects", projectId, "deliveries")}>{t("nav.deliveries")}</a> / <code>{deliveryId}</code>
       </p>
       {state.status === "loading" && <Loading />}
       {state.status === "error" && <ErrorState error={state.error} onRetry={reload} />}
       {state.status === "ready" && (
         <>
-          <div className="section-head">
-            <h1>
-              Delivery <code>{shortId(state.data.delivery.id)}</code> <StatusBadge status={state.data.delivery.status} />
-            </h1>
-            <div className="actions">
-              <button type="button" className="button" onClick={reload}>
-                Refresh
-              </button>
-              <ReplayButton projectId={projectId} deliveryId={deliveryId} terminal={isTerminal(state.data.delivery.status)} />
-            </div>
-          </div>
+          <PageHeader
+            title={
+              <>
+                {t("crumb.delivery")} <code>{shortId(state.data.delivery.id)}</code> <StatusBadge status={state.data.delivery.status} />
+              </>
+            }
+            actions={
+              <>
+                <button type="button" className="button" onClick={reload}>
+                  <Icon name="refresh" size={15} />
+                  {t("common.refresh")}
+                </button>
+                <ReplayButton projectId={projectId} deliveryId={deliveryId} terminal={isTerminal(state.data.delivery.status)} />
+              </>
+            }
+          />
+          <div className="panel">
           <dl className="facts">
-            <dt>Event</dt>
+            <dt>{t("crumb.event")}</dt>
             <dd>
               <a href={href("projects", projectId, "events", state.data.delivery.event_id)}>
                 <code>{state.data.delivery.event_id}</code>
               </a>
             </dd>
-            <dt>Endpoint</dt>
+            <dt>{t("delivery.endpoint")}</dt>
             <dd>
               <a href={href("projects", projectId, "deliveries") + `?endpoint_id=${state.data.delivery.endpoint_id}`}>
                 <code>{state.data.delivery.endpoint_id}</code>
@@ -53,7 +62,7 @@ export function DeliveryDetailPage({ projectId, deliveryId }: { projectId: strin
             </dd>
             {state.data.delivery.replay_of && (
               <>
-                <dt>Replay of</dt>
+                <dt>{t("delivery.replayOf")}</dt>
                 <dd>
                   <a href={href("projects", projectId, "deliveries", state.data.delivery.replay_of)}>
                     <code>{state.data.delivery.replay_of}</code>
@@ -61,18 +70,19 @@ export function DeliveryDetailPage({ projectId, deliveryId }: { projectId: strin
                 </dd>
               </>
             )}
-            <dt>Next attempt</dt>
+            <dt>{t("deliveries.col.next")}</dt>
             <dd>
               {state.data.delivery.next_attempt_at
                 ? `${formatRelative(state.data.delivery.next_attempt_at)} (${formatTime(state.data.delivery.next_attempt_at)})`
                 : "—"}
             </dd>
-            <dt>Created</dt>
+            <dt>{t("deliveries.col.created")}</dt>
             <dd>{formatTime(state.data.delivery.created_at)}</dd>
           </dl>
-          <h2>Attempts</h2>
+          </div>
+          <h2>{t("deliveries.col.attempts")}</h2>
           {state.data.attempts.length === 0 ? (
-            <Empty title="No attempts yet">A worker will pick this delivery up when it is due.</Empty>
+            <Empty title={t("delivery.noAttempts")}>{t("delivery.noAttemptsHint")}</Empty>
           ) : (
             <ol className="attempts">
               {state.data.attempts.map((a) => (
@@ -103,8 +113,8 @@ function ReplayButton({ projectId, deliveryId, terminal }: { projectId: string; 
 
   if (!terminal) {
     return (
-      <button type="button" className="button" disabled title="Only succeeded or dead-lettered deliveries can be replayed">
-        Replay
+      <button type="button" className="button" disabled title={t("delivery.replayDisabled")}>
+        {t("delivery.replay")}
       </button>
     );
   }
@@ -116,7 +126,7 @@ function ReplayButton({ projectId, deliveryId, terminal }: { projectId: string; 
       const created = await api.replayDelivery(deliveryId);
       navigate(href("projects", projectId, "deliveries", created.id));
     } catch (err) {
-      setError(err instanceof Error ? describeError(err) : "Replay failed.");
+      setError(err instanceof Error ? describeError(err) : t("delivery.replayFailed"));
       setConfirming(false);
     } finally {
       setBusy(false);
@@ -127,17 +137,17 @@ function ReplayButton({ projectId, deliveryId, terminal }: { projectId: string; 
     <span className="replay">
       {confirming ? (
         <>
-          <span className="muted">Send this event to the endpoint again?</span>
+          <span className="muted">{t("delivery.replayConfirm")}</span>
           <button type="button" className="button button-primary" disabled={busy} onClick={() => void replay()}>
-            {busy ? "Queuing…" : "Confirm replay"}
+            {busy ? t("delivery.queuing") : t("delivery.confirmReplay")}
           </button>
           <button type="button" className="button" disabled={busy} onClick={() => setConfirming(false)}>
-            Cancel
+            {t("common.cancel")}
           </button>
         </>
       ) : (
         <button type="button" className="button" onClick={() => setConfirming(true)}>
-          Replay
+          {t("delivery.replay")}
         </button>
       )}
       {error && (

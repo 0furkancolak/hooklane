@@ -4,6 +4,7 @@ import { ApiContext } from "../shared/api/context";
 import { clearKey, loadKey, saveKey } from "../shared/session";
 import { SignInPage } from "../features/auth/SignInPage";
 import { Layout } from "./Layout";
+import { t } from "../shared/i18n";
 
 export default function App() {
   const [key, setKey] = useState<string | null>(() => loadKey());
@@ -16,7 +17,7 @@ export default function App() {
   }, []);
 
   const client = useMemo(
-    () => (key ? new ApiClient(key, { onUnauthorized: () => signOut("Your API key was rejected. It may have been revoked; sign in again.") }) : null),
+    () => (key ? new ApiClient(key, { onUnauthorized: () => signOut(t("app.keyRejected")) }) : null),
     [key, signOut],
   );
 
