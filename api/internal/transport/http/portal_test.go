@@ -122,7 +122,7 @@ func TestPortalCustomersAreIsolated(t *testing.T) {
 	if resp.StatusCode != 200 || len(deliveries) != 1 {
 		t.Fatalf("acme deliveries: %d %v", resp.StatusCode, body)
 	}
-	resp, body = portalDo(t, env, globex, "GET", "/v1/portal/deliveries", "")
+	_, body = portalDo(t, env, globex, "GET", "/v1/portal/deliveries", "")
 	if len(body["deliveries"].([]any)) != 0 {
 		t.Fatalf("globex deliveries leaked: %v", body)
 	}
