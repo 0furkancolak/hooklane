@@ -70,7 +70,8 @@ func run() error {
 		devKeys = application.NewDevelopmentKeyService(bootstrap, store, projects)
 	}
 	server := httpserver.NewServer(cfg, httpserver.Services{
-		Auth:     application.NewAuthenticator(store.Keys()),
+		Auth:     application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()),
+		Portal:   application.NewPortalService(store.Projects(), store.PortalTokens()),
 		Projects: projects,
 		Endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), secrets, application.EndpointRules{
 			AllowInsecureHTTP: cfg.AllowInsecureHTTP(),

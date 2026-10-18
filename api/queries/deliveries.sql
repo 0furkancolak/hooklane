@@ -1,10 +1,11 @@
 -- name: GetDelivery :one
 SELECT d.id, d.event_id, d.endpoint_id, p.organization_id, d.status, d.attempt_count,
        d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
-       d.created_at, d.updated_at
+       d.created_at, d.updated_at, en.customer AS endpoint_customer
 FROM deliveries d
 JOIN events e ON e.id = d.event_id
 JOIN projects p ON p.id = e.project_id
+JOIN endpoints en ON en.id = d.endpoint_id
 WHERE d.id = $1;
 
 -- name: ListDeliveriesByEvent :many
@@ -28,7 +29,8 @@ RETURNING id, event_id, endpoint_id, status, attempt_count,
 INSERT INTO deliveries (event_id, endpoint_id)
 SELECT sqlc.arg('event_id'), id
 FROM endpoints
-WHERE project_id = sqlc.arg('project_id') AND enabled;
+WHERE project_id = sqlc.arg('project_id') AND enabled
+  AND customer IS NOT DISTINCT FROM sqlc.narg('customer')::text;
 
 -- name: CountDeliveriesByEvent :one
 -- Counts the fan-out of an event; replays are not part of it.
@@ -100,6 +102,7 @@ JOIN endpoints en ON en.id = d.endpoint_id
 WHERE en.project_id = sqlc.arg('project_id')
   AND (sqlc.narg('status')::text IS NULL OR d.status = sqlc.narg('status')::text)
   AND (sqlc.narg('endpoint_id')::uuid IS NULL OR d.endpoint_id = sqlc.narg('endpoint_id')::uuid)
+  AND (sqlc.narg('customer')::text IS NULL OR en.customer = sqlc.narg('customer')::text)
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 

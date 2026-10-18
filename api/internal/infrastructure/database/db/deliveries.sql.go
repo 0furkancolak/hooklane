@@ -158,15 +158,17 @@ INSERT INTO deliveries (event_id, endpoint_id)
 SELECT $1, id
 FROM endpoints
 WHERE project_id = $2 AND enabled
+  AND customer IS NOT DISTINCT FROM $3::text
 `
 
 type CreateDeliveriesForEventParams struct {
 	EventID   pgtype.UUID
 	ProjectID pgtype.UUID
+	Customer  pgtype.Text
 }
 
 func (q *Queries) CreateDeliveriesForEvent(ctx context.Context, arg CreateDeliveriesForEventParams) (int64, error) {
-	result, err := q.db.Exec(ctx, createDeliveriesForEvent, arg.EventID, arg.ProjectID)
+	result, err := q.db.Exec(ctx, createDeliveriesForEvent, arg.EventID, arg.ProjectID, arg.Customer)
 	if err != nil {
 		return 0, err
 	}
@@ -253,10 +255,11 @@ func (q *Queries) DeliveryStatsByProject(ctx context.Context, projectID pgtype.U
 const getDelivery = `-- name: GetDelivery :one
 SELECT d.id, d.event_id, d.endpoint_id, p.organization_id, d.status, d.attempt_count,
        d.next_attempt_at, d.last_response_status, d.last_error, d.replay_of,
-       d.created_at, d.updated_at
+       d.created_at, d.updated_at, en.customer AS endpoint_customer
 FROM deliveries d
 JOIN events e ON e.id = d.event_id
 JOIN projects p ON p.id = e.project_id
+JOIN endpoints en ON en.id = d.endpoint_id
 WHERE d.id = $1
 `
 
@@ -273,6 +276,7 @@ type GetDeliveryRow struct {
 	ReplayOf           pgtype.UUID
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+	EndpointCustomer   pgtype.Text
 }
 
 func (q *Queries) GetDelivery(ctx context.Context, id pgtype.UUID) (GetDeliveryRow, error) {
@@ -291,6 +295,7 @@ func (q *Queries) GetDelivery(ctx context.Context, id pgtype.UUID) (GetDeliveryR
 		&i.ReplayOf,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EndpointCustomer,
 	)
 	return i, err
 }
@@ -385,14 +390,16 @@ JOIN endpoints en ON en.id = d.endpoint_id
 WHERE en.project_id = $1
   AND ($2::text IS NULL OR d.status = $2::text)
   AND ($3::uuid IS NULL OR d.endpoint_id = $3::uuid)
+  AND ($4::text IS NULL OR en.customer = $4::text)
 ORDER BY d.created_at DESC, d.id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListDeliveriesByProjectParams struct {
 	ProjectID  pgtype.UUID
 	Status     pgtype.Text
 	EndpointID pgtype.UUID
+	Customer   pgtype.Text
 	Offset     int32
 	Limit      int32
 }
@@ -418,6 +425,7 @@ func (q *Queries) ListDeliveriesByProject(ctx context.Context, arg ListDeliverie
 		arg.ProjectID,
 		arg.Status,
 		arg.EndpointID,
+		arg.Customer,
 		arg.Offset,
 		arg.Limit,
 	)

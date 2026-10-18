@@ -81,6 +81,7 @@ function pageTitle(name: Route["name"]): string {
     case "delivery":
       return t("crumb.delivery");
     case "not_found":
+    case "portal":
       return t("crumb.notFound");
   }
 }
@@ -183,6 +184,7 @@ function Page({ route }: { route: Route }) {
     case "delivery":
       return <DeliveryDetailPage key={route.deliveryId} projectId={route.projectId} deliveryId={route.deliveryId} />;
     case "not_found":
+    case "portal":
       return (
         <Empty title={t("notFound.title")}>
           <a href={href("projects")}>{t("notFound.back")}</a>

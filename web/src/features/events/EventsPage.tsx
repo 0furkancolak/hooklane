@@ -76,6 +76,7 @@ export function EventsPage({ projectId, query }: { projectId: string; query: URL
                   <tr>
                     <th>{t("events.col.event")}</th>
                     <th>{t("events.col.type")}</th>
+                    <th>{t("events.col.customer")}</th>
                     <th>{t("events.col.idempotency")}</th>
                     <th>{t("events.col.received")}</th>
                   </tr>
@@ -91,6 +92,7 @@ export function EventsPage({ projectId, query }: { projectId: string; query: URL
                       <td>
                         <code>{event.event_type}</code>
                       </td>
+                      <td>{event.customer ? <span className="tag tag-flat">{event.customer}</span> : <span className="muted">—</span>}</td>
                       <td className="muted">{event.idempotency_key ?? "—"}</td>
                       <td>{formatTime(event.created_at)}</td>
                     </tr>

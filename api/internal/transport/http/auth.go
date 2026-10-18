@@ -14,17 +14,22 @@ var principalKey principalKeyType
 
 func authMiddleware(auth *application.Authenticator) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		scheme, token, found := strings.Cut(strings.TrimSpace(c.Get("Authorization")), " ")
-		if !found || !strings.EqualFold(scheme, "Bearer") {
-			token = ""
-		}
-		principal, err := auth.Authenticate(c.Context(), token)
+		principal, err := auth.Authenticate(c.Context(), bearerToken(c))
 		if err != nil {
 			return writeError(c, err)
 		}
 		c.Locals(principalKey, principal)
 		return c.Next()
 	}
+}
+
+// bearerToken returns the token of an "Authorization: Bearer" header, or "".
+func bearerToken(c fiber.Ctx) string {
+	scheme, token, found := strings.Cut(strings.TrimSpace(c.Get("Authorization")), " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return token
 }
 
 // requireScope rejects keys whose scopes do not permit the action. It must run

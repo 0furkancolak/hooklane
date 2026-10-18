@@ -19,22 +19,24 @@ import (
 )
 
 type state struct {
-	projects   []domain.Project
-	keys       []domain.APIKey
-	endpoints  []domain.Endpoint
-	events     []domain.Event
-	deliveries []domain.Delivery
-	attempts   []domain.DeliveryAttempt
+	projects     []domain.Project
+	keys         []domain.APIKey
+	portalTokens []domain.PortalToken
+	endpoints    []domain.Endpoint
+	events       []domain.Event
+	deliveries   []domain.Delivery
+	attempts     []domain.DeliveryAttempt
 }
 
 func (s state) clone() state {
 	return state{
-		projects:   slices.Clone(s.projects),
-		keys:       slices.Clone(s.keys),
-		endpoints:  slices.Clone(s.endpoints),
-		events:     slices.Clone(s.events),
-		deliveries: slices.Clone(s.deliveries),
-		attempts:   slices.Clone(s.attempts),
+		projects:     slices.Clone(s.projects),
+		keys:         slices.Clone(s.keys),
+		portalTokens: slices.Clone(s.portalTokens),
+		endpoints:    slices.Clone(s.endpoints),
+		events:       slices.Clone(s.events),
+		deliveries:   slices.Clone(s.deliveries),
+		attempts:     slices.Clone(s.attempts),
 	}
 }
 
@@ -72,11 +74,12 @@ func (s *Store) Counts() (events, deliveries int) {
 	return len(s.state.events), len(s.state.deliveries)
 }
 
-func (s *Store) Projects() Projects     { return Projects{s} }
-func (s *Store) Keys() Keys             { return Keys{s} }
-func (s *Store) Endpoints() Endpoints   { return Endpoints{s} }
-func (s *Store) Events() Events         { return Events{s} }
-func (s *Store) Deliveries() Deliveries { return Deliveries{s} }
+func (s *Store) Projects() Projects         { return Projects{s} }
+func (s *Store) Keys() Keys                 { return Keys{s} }
+func (s *Store) PortalTokens() PortalTokens { return PortalTokens{s} }
+func (s *Store) Endpoints() Endpoints       { return Endpoints{s} }
+func (s *Store) Events() Events             { return Events{s} }
+func (s *Store) Deliveries() Deliveries     { return Deliveries{s} }
 
 type Projects struct{ s *Store }
 
@@ -120,6 +123,28 @@ func (s *Store) OldestProject(context.Context) (domain.Project, error) {
 		return domain.Project{}, pgx.ErrNoRows
 	}
 	return s.state.projects[0], nil
+}
+
+type PortalTokens struct{ s *Store }
+
+func (r PortalTokens) Create(_ context.Context, token domain.PortalToken) (domain.PortalToken, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	token.ID = uuid.New()
+	token.CreatedAt = time.Now().UTC()
+	r.s.state.portalTokens = append(r.s.state.portalTokens, token)
+	return token, nil
+}
+
+func (r PortalTokens) GetByHash(_ context.Context, hash []byte) (domain.PortalToken, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, t := range r.s.state.portalTokens {
+		if bytes.Equal(t.Hash, hash) {
+			return t, nil
+		}
+	}
+	return domain.PortalToken{}, pgx.ErrNoRows
 }
 
 type Keys struct{ s *Store }
@@ -213,7 +238,7 @@ func (r Endpoints) ListByProject(_ context.Context, projectID uuid.UUID, filter 
 	defer r.s.mu.Unlock()
 	var out []domain.Endpoint
 	for _, e := range r.s.state.endpoints {
-		if e.ProjectID == projectID && (filter.Enabled == nil || e.Enabled == *filter.Enabled) {
+		if e.ProjectID == projectID && (filter.Enabled == nil || e.Enabled == *filter.Enabled) && (filter.Customer == nil || sameCustomer(e.Customer, filter.Customer)) {
 			out = append(out, e)
 		}
 	}
@@ -250,7 +275,7 @@ func (r Events) InsertIdempotent(_ context.Context, event domain.Event) (applica
 	if event.IdempotencyKey != nil {
 		for _, existing := range r.s.state.events {
 			if existing.ProjectID == event.ProjectID && existing.IdempotencyKey != nil && *existing.IdempotencyKey == *event.IdempotencyKey {
-				matches := existing.EventType == event.EventType && bytes.Equal(existing.Payload, event.Payload)
+				matches := existing.EventType == event.EventType && bytes.Equal(existing.Payload, event.Payload) && sameCustomer(existing.Customer, event.Customer)
 				return application.IdempotentInsert{Event: existing, Created: false, Matches: matches}, nil
 			}
 		}
@@ -277,7 +302,7 @@ func (r Events) ListByProject(_ context.Context, projectID uuid.UUID, filter app
 	defer r.s.mu.Unlock()
 	var out []domain.Event
 	for _, e := range r.s.state.events {
-		if e.ProjectID == projectID && (filter.EventType == "" || e.EventType == filter.EventType) {
+		if e.ProjectID == projectID && (filter.EventType == "" || e.EventType == filter.EventType) && (filter.Customer == nil || sameCustomer(e.Customer, filter.Customer)) {
 			out = append(out, e)
 		}
 	}
@@ -286,7 +311,7 @@ func (r Events) ListByProject(_ context.Context, projectID uuid.UUID, filter app
 
 type Deliveries struct{ s *Store }
 
-func (r Deliveries) CreateForEvent(_ context.Context, eventID, projectID uuid.UUID) (int64, error) {
+func (r Deliveries) CreateForEvent(_ context.Context, eventID, projectID uuid.UUID, customer *string) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.FailDeliveries != nil {
@@ -294,7 +319,7 @@ func (r Deliveries) CreateForEvent(_ context.Context, eventID, projectID uuid.UU
 	}
 	var n int64
 	for _, e := range r.s.state.endpoints {
-		if e.ProjectID == projectID && e.Enabled {
+		if e.ProjectID == projectID && e.Enabled && sameCustomer(e.Customer, customer) {
 			r.s.state.deliveries = append(r.s.state.deliveries, domain.Delivery{
 				ID:         uuid.New(),
 				EventID:    eventID,
@@ -326,6 +351,11 @@ func (r Deliveries) Get(_ context.Context, id uuid.UUID) (domain.Delivery, error
 	for _, d := range r.s.state.deliveries {
 		if d.ID == id {
 			d.OrganizationID = r.s.orgOfEvent(d.EventID)
+			for _, e := range r.s.state.endpoints {
+				if e.ID == d.EndpointID {
+					d.EndpointCustomer = e.Customer
+				}
+			}
 			return d, nil
 		}
 	}
@@ -380,7 +410,7 @@ func (r Deliveries) ListByProject(_ context.Context, projectID uuid.UUID, filter
 		if r.s.projectOfEndpoint(d.EndpointID) != projectID {
 			continue
 		}
-		if (filter.Status == "" || d.Status == filter.Status) && (filter.EndpointID == nil || d.EndpointID == *filter.EndpointID) {
+		if (filter.Status == "" || d.Status == filter.Status) && (filter.EndpointID == nil || d.EndpointID == *filter.EndpointID) && (filter.Customer == nil || sameCustomer(r.s.customerOfEndpoint(d.EndpointID), filter.Customer)) {
 			out = append(out, d)
 		}
 	}
@@ -432,6 +462,15 @@ func (s *Store) AddAttempt(attempt domain.DeliveryAttempt) {
 	s.state.attempts = append(s.state.attempts, attempt)
 }
 
+func (s *Store) customerOfEndpoint(endpointID uuid.UUID) *string {
+	for _, e := range s.state.endpoints {
+		if e.ID == endpointID {
+			return e.Customer
+		}
+	}
+	return nil
+}
+
 func (s *Store) projectOfEndpoint(endpointID uuid.UUID) uuid.UUID {
 	for _, e := range s.state.endpoints {
 		if e.ID == endpointID {
@@ -477,10 +516,19 @@ func page[T any](items []T, limit, offset int32) []T {
 var ErrInjected = errors.New("injected failure")
 
 var (
-	_ application.ProjectRepository  = Projects{}
-	_ application.APIKeyRepository   = Keys{}
-	_ application.EndpointRepository = Endpoints{}
-	_ application.EventRepository    = Events{}
-	_ application.DeliveryRepository = Deliveries{}
-	_ application.Transactor         = (*Store)(nil)
+	_ application.ProjectRepository     = Projects{}
+	_ application.APIKeyRepository      = Keys{}
+	_ application.PortalTokenRepository = PortalTokens{}
+	_ application.EndpointRepository    = Endpoints{}
+	_ application.EventRepository       = Events{}
+	_ application.DeliveryRepository    = Deliveries{}
+	_ application.Transactor            = (*Store)(nil)
 )
+
+// sameCustomer mirrors "customer IS NOT DISTINCT FROM": both absent or equal.
+func sameCustomer(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}

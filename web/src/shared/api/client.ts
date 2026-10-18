@@ -10,6 +10,8 @@ import type {
   HooklaneEvent,
   IngestedEvent,
   Page,
+  PortalLink,
+  PortalMe,
   Project,
   Scope,
   SinkRequest,
@@ -72,12 +74,49 @@ export class ApiClient {
     return this.send<APIKey>("POST", `/v1/api-keys/${seg(id)}/revoke`);
   }
 
-  listEndpoints(projectId: string, params: PageParams & { enabled?: boolean } = {}, signal?: AbortSignal) {
+  listEndpoints(projectId: string, params: PageParams & { enabled?: boolean; customer?: string } = {}, signal?: AbortSignal) {
     return this.get<Page<"endpoints", Endpoint>>(`/v1/projects/${seg(projectId)}/endpoints${query(params)}`, signal);
   }
 
-  createEndpoint(projectId: string, url: string) {
-    return this.send<CreatedEndpoint>("POST", `/v1/projects/${seg(projectId)}/endpoints`, { url });
+  createEndpoint(projectId: string, url: string, customer?: string) {
+    return this.send<CreatedEndpoint>("POST", `/v1/projects/${seg(projectId)}/endpoints`, customer ? { url, customer } : { url });
+  }
+
+  createPortalLink(projectId: string, customer: string, ttlSeconds?: number) {
+    return this.send<PortalLink>("POST", `/v1/projects/${seg(projectId)}/portal-links`, ttlSeconds ? { customer, ttl_seconds: ttlSeconds } : { customer });
+  }
+
+  // Portal routes: the client must have been built with a portal token (hlp_…).
+  portalMe(signal?: AbortSignal) {
+    return this.get<PortalMe>("/v1/portal/me", signal);
+  }
+
+  listPortalEndpoints(params: PageParams = {}, signal?: AbortSignal) {
+    return this.get<Page<"endpoints", Endpoint>>(`/v1/portal/endpoints${query(params)}`, signal);
+  }
+
+  createPortalEndpoint(url: string) {
+    return this.send<CreatedEndpoint>("POST", "/v1/portal/endpoints", { url });
+  }
+
+  updatePortalEndpoint(id: string, change: { url?: string; enabled?: boolean }) {
+    return this.send<Endpoint>("PATCH", `/v1/portal/endpoints/${seg(id)}`, change);
+  }
+
+  getPortalEndpointSecret(id: string) {
+    return this.get<{ secret: string }>(`/v1/portal/endpoints/${seg(id)}/secret`);
+  }
+
+  listPortalDeliveries(params: PageParams & { status?: DeliveryStatus } = {}, signal?: AbortSignal) {
+    return this.get<Page<"deliveries", Delivery>>(`/v1/portal/deliveries${query(params)}`, signal);
+  }
+
+  listPortalAttempts(id: string, signal?: AbortSignal) {
+    return this.get<{ attempts: Attempt[] }>(`/v1/portal/deliveries/${seg(id)}/attempts`, signal);
+  }
+
+  replayPortalDelivery(id: string) {
+    return this.send<Delivery>("POST", `/v1/portal/deliveries/${seg(id)}/replay`);
   }
 
   updateEndpoint(id: string, change: { url?: string; enabled?: boolean }) {

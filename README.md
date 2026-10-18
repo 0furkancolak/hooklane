@@ -194,6 +194,28 @@ List routes are newest first and take `limit` (1–100, default 50) and `offset`
 
 Endpoint URLs must use `https`; `http` is accepted only when `APP_ENV=development`. URLs that point at blocked addresses are rejected with `400 destination_not_allowed` (see [Security](#security)).
 
+### Customers and the portal
+
+If your own customers should receive webhooks, give each endpoint and event a **customer** (any id from your system, for example `acme-inc`):
+
+- An event sent with `"customer": "acme-inc"` reaches only endpoints of that customer.
+- An event without a customer reaches only endpoints without one (your own).
+- `POST /v1/projects/{id}/portal-links` (admin) returns a link for one customer, valid for 1 hour to 7 days (default 1 day). The customer opens it, adds and manages their own endpoints (up to 25), reveals the signing secrets and sees their deliveries and attempts, without ever holding an API key. A portal token only works on `/v1/portal/*`, an API key never works there, and one customer cannot see or touch another's endpoints or deliveries.
+
+```sh
+curl -s -X POST "$HOOKLANE/v1/projects/$PROJECT/portal-links" \
+  -H "Authorization: Bearer $HOOKLANE_KEY" -H 'Content-Type: application/json' \
+  -d '{"customer":"acme-inc"}'          # -> {"token":"hlp_…","path":"/#/portal/hlp_…",…}
+
+curl -s -X POST "$HOOKLANE/v1/projects/$PROJECT/events" \
+  -H "Authorization: Bearer $HOOKLANE_INGEST_KEY" -H 'Content-Type: application/json' \
+  -d '{"event_type":"invoice.paid","customer":"acme-inc","payload":{"amount":4900}}'
+```
+
+In the dashboard, the Endpoints page of a project creates portal links and filters endpoints by customer.
+
+![Customer portal](docs/screenshots/portal-dark.png)
+
 ### Accepting events
 
 ```sh
@@ -240,6 +262,7 @@ The dashboard signs in with an API key and only calls the documented `/v1` API, 
 - **Projects**: create projects, and read what Hooklane is for and why to use it.
 - **Overview**: delivery counts by status, with links to filtered lists, and a warning when due deliveries are waiting for a worker.
 - **Playground**: send a test event and follow it through delivery, retries and the receiver.
+- **Customer portal**: create a link for a customer from the Endpoints page; the customer gets a small page of their own (`/#/portal/…`).
 - **Endpoints**: add an endpoint (the signing secret is shown once, with a copy button), edit its URL, enable or disable it, and reveal the secret on request. Blocked destinations are explained.
 - **Events**: filter by type, then open an event to see its payload and every delivery, including replays.
 - **Deliveries**: filter by status or endpoint (filters live in the URL, so views can be shared), page through history, and open a delivery to see each attempt's status code, response excerpt, error and duration.

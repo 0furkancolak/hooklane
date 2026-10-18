@@ -28,6 +28,7 @@ func (s *Store) InsertEvent(ctx context.Context, event domain.Event) (applicatio
 		EventType:      event.EventType,
 		Payload:        event.Payload,
 		IdempotencyKey: key,
+		Customer:       textPtr(event.Customer),
 	})
 	if err == nil {
 		mapped := mapEvent(row)
@@ -43,6 +44,7 @@ func (s *Store) InsertEvent(ctx context.Context, event domain.Event) (applicatio
 		Payload:        event.Payload,
 		ProjectID:      uuidToPg(event.ProjectID),
 		IdempotencyKey: key.String,
+		Customer:       textPtr(event.Customer),
 	})
 	if err != nil {
 		return application.IdempotentInsert{}, err
@@ -54,6 +56,7 @@ func (s *Store) InsertEvent(ctx context.Context, event domain.Event) (applicatio
 		Payload:        existing.Payload,
 		IdempotencyKey: existing.IdempotencyKey,
 		CreatedAt:      existing.CreatedAt,
+		Customer:       existing.Customer,
 	})
 	mapped.OrganizationID = event.OrganizationID
 	return application.IdempotentInsert{Event: mapped, Created: false, Matches: existing.Matches}, nil
@@ -71,6 +74,7 @@ func (s *Store) GetEvent(ctx context.Context, id uuid.UUID) (domain.Event, error
 		Payload:        row.Payload,
 		IdempotencyKey: row.IdempotencyKey,
 		CreatedAt:      row.CreatedAt,
+		Customer:       row.Customer,
 	})
 	mapped.OrganizationID = pgToUUID(row.OrganizationID)
 	return mapped, nil
@@ -84,6 +88,7 @@ func (s *Store) ListEventsByProject(ctx context.Context, projectID uuid.UUID, fi
 	rows, err := s.q(ctx).ListEventsByProject(ctx, db.ListEventsByProjectParams{
 		ProjectID: uuidToPg(projectID),
 		EventType: eventType,
+		Customer:  textPtr(filter.Customer),
 		Limit:     limit,
 		Offset:    offset,
 	})
@@ -97,10 +102,11 @@ func (s *Store) ListEventsByProject(ctx context.Context, projectID uuid.UUID, fi
 	return events, nil
 }
 
-func (s *Store) CreateDeliveriesForEvent(ctx context.Context, eventID, projectID uuid.UUID) (int64, error) {
+func (s *Store) CreateDeliveriesForEvent(ctx context.Context, eventID, projectID uuid.UUID, customer *string) (int64, error) {
 	return s.q(ctx).CreateDeliveriesForEvent(ctx, db.CreateDeliveriesForEventParams{
 		EventID:   uuidToPg(eventID),
 		ProjectID: uuidToPg(projectID),
+		Customer:  textPtr(customer),
 	})
 }
 
@@ -128,6 +134,7 @@ func mapEvent(row db.Event) domain.Event {
 		EventType:      row.EventType,
 		Payload:        row.Payload,
 		IdempotencyKey: key,
+		Customer:       textFromPg(row.Customer),
 		CreatedAt:      row.CreatedAt.Time,
 	}
 }

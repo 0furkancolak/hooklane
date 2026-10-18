@@ -40,6 +40,14 @@ func int8Ptr(value *int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: *value, Valid: true}
 }
 
+func textFromPg(value pgtype.Text) *string {
+	if !value.Valid {
+		return nil
+	}
+	s := value.String
+	return &s
+}
+
 func textPtr(value *string) pgtype.Text {
 	if value == nil {
 		return pgtype.Text{}

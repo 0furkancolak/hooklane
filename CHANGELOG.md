@@ -13,6 +13,7 @@ include breaking changes, which are called out.
 
 ### Added
 
+- Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.
 - API key scopes: `admin`, `ingest` (send events only) and `read`, chosen when a key is created (dashboard and API). Existing keys stay `admin`. Revealing endpoint secrets now needs `admin`.
 - `LOG_FORMAT=pretty|json`: coloured one-line logs by default in development (JSON elsewhere).
 - The dashboard uses the full width of wide screens, and an empty list no longer draws a box inside a box.

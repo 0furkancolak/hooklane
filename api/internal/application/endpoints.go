@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"
@@ -45,7 +46,13 @@ func NewEndpointService(
 type CreateEndpointInput struct {
 	URL     string
 	Enabled *bool
+	// Customer limits the endpoint to events sent for that customer. Portal
+	// principals always get their own customer.
+	Customer *string
 }
+
+// maxEndpointsPerCustomer bounds what one portal link can create.
+const maxEndpointsPerCustomer = 25
 
 // Create registers an endpoint and returns it with its raw signing secret.
 func (s *EndpointService) Create(ctx context.Context, principal Principal, projectID uuid.UUID, in CreateEndpointInput) (domain.Endpoint, string, error) {
@@ -56,6 +63,22 @@ func (s *EndpointService) Create(ctx context.Context, principal Principal, proje
 	project, err := ownedProject(ctx, s.projects, principal, projectID)
 	if err != nil {
 		return domain.Endpoint{}, "", err
+	}
+	customer := in.Customer
+	if principal.IsPortal() {
+		customer = principal.Customer
+	}
+	if customer != nil {
+		if !customerPattern.MatchString(*customer) {
+			return domain.Endpoint{}, "", ErrInvalidInput
+		}
+		existing, err := s.endpoints.ListByProject(ctx, project.ID, EndpointFilter{Customer: customer}, maxEndpointsPerCustomer, 0)
+		if err != nil {
+			return domain.Endpoint{}, "", err
+		}
+		if len(existing) >= maxEndpointsPerCustomer {
+			return domain.Endpoint{}, "", ErrLimitReached
+		}
 	}
 	secret, err := GenerateEndpointSecret()
 	if err != nil {
@@ -75,6 +98,7 @@ func (s *EndpointService) Create(ctx context.Context, principal Principal, proje
 		URL:             destination,
 		SecretEncrypted: sealed,
 		Enabled:         enabled,
+		Customer:        customer,
 	})
 	if err != nil {
 		return domain.Endpoint{}, "", err
@@ -93,12 +117,19 @@ func (s *EndpointService) Get(ctx context.Context, principal Principal, id uuid.
 	if endpoint.OrganizationID != principal.OrganizationID {
 		return domain.Endpoint{}, ErrForbidden
 	}
+	if principal.IsPortal() && (endpoint.ProjectID != principal.ProjectID || !sameCustomer(endpoint.Customer, principal.Customer)) {
+		// Another customer's endpoint is indistinguishable from a missing one.
+		return domain.Endpoint{}, ErrNotFound
+	}
 	return endpoint, nil
 }
 
 func (s *EndpointService) List(ctx context.Context, principal Principal, projectID uuid.UUID, filter EndpointFilter, page PageRequest) (Page[domain.Endpoint], error) {
 	if _, err := ownedProject(ctx, s.projects, principal, projectID); err != nil {
 		return Page[domain.Endpoint]{}, err
+	}
+	if principal.IsPortal() {
+		filter.Customer = principal.Customer
 	}
 	return paginate(page, func(limit, offset int32) ([]domain.Endpoint, error) {
 		return s.endpoints.ListByProject(ctx, projectID, filter, limit, offset)
@@ -165,4 +196,15 @@ func (s *EndpointService) validateURL(raw string) (string, error) {
 		return "", err
 	}
 	return parsed.String(), nil
+}
+
+// customerPattern limits customer identifiers to a safe, printable alphabet.
+var customerPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$`)
+
+// sameCustomer reports whether both are absent or equal.
+func sameCustomer(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

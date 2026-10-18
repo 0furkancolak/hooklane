@@ -23,6 +23,8 @@ type Services struct {
 	Deliveries *application.DeliveryService
 	// DevKeys is only used when APP_ENV=development.
 	DevKeys *application.DevelopmentKeyService
+	// Portal issues customer portal links; nil disables portal routes.
+	Portal *application.PortalService
 }
 
 type Server struct {
@@ -68,6 +70,7 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	endpoints := endpointHandler{endpoints: svc.Endpoints}
 	events := eventHandler{events: svc.Events}
 	deliveries := deliveryHandler{deliveries: svc.Deliveries}
+	portal := portalHandler{portal: svc.Portal, projects: svc.Projects}
 
 	// Authentication is attached to each route rather than the group so the
 	// matched route pattern is known even when a request is rejected; unknown
@@ -101,6 +104,21 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	v1.Get("/deliveries/:id/attempts", auth, read, deliveries.listAttempts)
 	v1.Post("/deliveries/:id/replay", auth, admin, deliveries.replay)
 
+	v1.Post("/projects/:id/portal-links", auth, admin, portal.createLink)
+
+	// Routes for customers holding a portal link. They are limited to one
+	// customer's endpoints and deliveries inside one project.
+	portalAuth := portalAuthMiddleware(svc.Auth)
+	v1.Get("/portal/me", portalAuth, portal.me)
+	v1.Get("/portal/endpoints", portalAuth, endpoints.list)
+	v1.Post("/portal/endpoints", portalAuth, endpoints.create)
+	v1.Get("/portal/endpoints/:id", portalAuth, endpoints.get)
+	v1.Patch("/portal/endpoints/:id", portalAuth, endpoints.update)
+	v1.Get("/portal/endpoints/:id/secret", portalAuth, endpoints.secret)
+	v1.Get("/portal/deliveries", portalAuth, deliveries.listForProject)
+	v1.Get("/portal/deliveries/:id/attempts", portalAuth, deliveries.listAttempts)
+	v1.Post("/portal/deliveries/:id/replay", portalAuth, deliveries.replay)
+
 	// Development only, and deliberately missing from openapi.yaml.
 	if cfg.AppEnv == config.AppEnvDevelopment && svc.DevKeys != nil {
 		dev := devKeyHandler{keys: svc.DevKeys}
@@ -128,7 +146,8 @@ func securityHeaders(c fiber.Ctx) error {
 }
 
 func (s *Server) Listen() error {
-	return s.app.Listen(":" + s.port)
+	// The process logs its own "listening" line; Fiber's banner only adds noise.
+	return s.app.Listen(":"+s.port, fiber.ListenConfig{DisableStartupMessage: true})
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

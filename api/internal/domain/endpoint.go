@@ -13,8 +13,10 @@ type Endpoint struct {
 	URL             string
 	SecretEncrypted []byte
 	Enabled         bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// Customer, when set, limits the endpoint to events sent for that customer.
+	Customer  *string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type EndpointUpdate struct {

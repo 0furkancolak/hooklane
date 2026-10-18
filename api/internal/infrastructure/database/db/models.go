@@ -55,6 +55,7 @@ type Endpoint struct {
 	Enabled         bool
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	Customer        pgtype.Text
 }
 
 type Event struct {
@@ -64,12 +65,22 @@ type Event struct {
 	Payload        []byte
 	IdempotencyKey pgtype.Text
 	CreatedAt      pgtype.Timestamptz
+	Customer       pgtype.Text
 }
 
 type Organization struct {
 	ID        pgtype.UUID
 	Name      string
 	Slug      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type PortalToken struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Customer  string
+	TokenHash []byte
+	ExpiresAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 }
 

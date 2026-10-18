@@ -52,7 +52,7 @@ func ownedProject(ctx context.Context, projects ProjectRepository, principal Pri
 		}
 		return domain.Project{}, err
 	}
-	if !OwnsProject(principal, project) {
+	if !OwnsProject(principal, project) || (principal.IsPortal() && principal.ProjectID != project.ID) {
 		return domain.Project{}, ErrForbidden
 	}
 	return project, nil
