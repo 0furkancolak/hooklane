@@ -24,6 +24,7 @@ servers:
 security:
   - apiKey: []
 tags:
+  - name: Accounts
   - name: Projects
   - name: API keys
   - name: Endpoints
@@ -59,6 +60,105 @@ paths:
           content:
             application/yaml: {}
 
+  /v1/auth/signup:
+    post:
+      tags: [Accounts]
+      summary: Create an account and an organization, and sign in
+      description: Open on development servers. In production only the first account can be created unless `SIGNUP_ENABLED=true`. Limited per client address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 128 }
+                organization_name: { type: string, maxLength: 200, description: Defaults to the part of the email before the @. }
+      responses:
+        "201": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/SessionResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v1/auth/signin:
+    post:
+      tags: [Accounts]
+      summary: Sign in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Signed in, content: { application/json: { schema: { $ref: "#/components/schemas/SessionResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /v1/auth/me:
+    get:
+      tags: [Accounts]
+      summary: The signed-in user, the active organization and all their organizations
+      security: [{ session: [] }]
+      responses:
+        "200": { description: Account, content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/auth/signout:
+    post:
+      tags: [Accounts]
+      summary: End the session
+      security: [{ session: [] }]
+      responses:
+        "204": { description: Signed out }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/auth/organizations:
+    post:
+      tags: [Accounts]
+      summary: Create another organization owned by the user and switch to it
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "201": { description: Account, content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/auth/switch-organization:
+    post:
+      tags: [Accounts]
+      summary: Work in another organization the user belongs to
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_id]
+              properties:
+                organization_id: { type: string, format: uuid }
+      responses:
+        "200": { description: Account, content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /v1/projects:
     post:
       tags: [Projects]
@@ -608,6 +708,10 @@ components:
       type: http
       scheme: bearer
       description: A Hooklane API key (`hlk_` followed by 64 hex characters).
+    session:
+      type: http
+      scheme: bearer
+      description: A dashboard session token (`hls_` followed by 48 hex characters) from sign-up or sign-in. It works on every route an API key with the `admin` scope works on, inside the active organization, and on `/v1/auth/*`.
     portalToken:
       type: http
       scheme: bearer
@@ -654,6 +758,33 @@ components:
                 properties:
                   delivery_count: { type: integer }
   schemas:
+    Organization:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+    Account:
+      type: object
+      required: [user, organization, organizations]
+      properties:
+        user:
+          type: object
+          required: [id, email]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string }
+        organization: { $ref: "#/components/schemas/Organization" }
+        organizations: { type: array, items: { $ref: "#/components/schemas/Organization" } }
+    SessionResponse:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          required: [token, expires_at]
+          properties:
+            token: { type: string, description: Shown once. Send it as a bearer token. }
+            expires_at: { type: string, format: date-time }
     Error:
       type: object
       required: [error]
@@ -664,7 +795,7 @@ components:
           properties:
             code:
               type: string
-              examples: [invalid_input, unauthorized, revoked, forbidden, not_found, already_revoked, idempotency_conflict, delivery_not_finished, replay_in_progress, destination_not_allowed, payload_too_large, internal_error]
+              examples: [invalid_input, unauthorized, revoked, forbidden, not_found, already_revoked, idempotency_conflict, delivery_not_finished, replay_in_progress, destination_not_allowed, payload_too_large, invalid_credentials, email_taken, signup_disabled, rate_limited, internal_error]
             message: { type: string }
     PageInfo:
       type: object

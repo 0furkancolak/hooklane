@@ -34,6 +34,12 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusBadRequest, "invalid_input", "invalid input"
 	case errors.Is(err, application.ErrUnauthorized):
 		return http.StatusUnauthorized, "unauthorized", "unauthorized"
+	case errors.Is(err, application.ErrInvalidCredentials):
+		return http.StatusUnauthorized, "invalid_credentials", "invalid email or password"
+	case errors.Is(err, application.ErrEmailTaken):
+		return http.StatusConflict, "email_taken", "an account with this email already exists"
+	case errors.Is(err, application.ErrSignupDisabled):
+		return http.StatusForbidden, "signup_disabled", "sign-up is disabled on this server"
 	case errors.Is(err, application.ErrRevoked):
 		return http.StatusUnauthorized, "revoked", "api key revoked"
 	case errors.Is(err, application.ErrForbidden):

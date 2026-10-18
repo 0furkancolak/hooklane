@@ -19,7 +19,13 @@ type Principal struct {
 	// Customer is set for portal principals, which may only touch that
 	// customer's endpoints and deliveries inside ProjectID.
 	Customer *string
+	// UserID and SessionID are set for signed-in users (dashboard sessions).
+	UserID    uuid.UUID
+	SessionID uuid.UUID
 }
+
+// IsSession reports whether the principal is a signed-in user.
+func (p Principal) IsSession() bool { return p.SessionID != uuid.Nil }
 
 // IsPortal reports whether the principal came from a portal link.
 func (p Principal) IsPortal() bool { return p.Customer != nil }
@@ -30,17 +36,27 @@ func (p Principal) Can(required domain.Scope) bool {
 }
 
 type Authenticator struct {
-	keys   APIKeyRepository
-	portal PortalTokenRepository
-	now    func() time.Time
+	keys     APIKeyRepository
+	portal   PortalTokenRepository
+	sessions SessionRepository
+	now      func() time.Time
 }
 
 func NewAuthenticator(keys APIKeyRepository) *Authenticator {
 	return &Authenticator{keys: keys, now: time.Now}
 }
 
+// WithSessions lets the authenticator accept dashboard session tokens.
+func (a *Authenticator) WithSessions(sessions SessionRepository) *Authenticator {
+	a.sessions = sessions
+	return a
+}
+
 func (a *Authenticator) Authenticate(ctx context.Context, rawKey string) (Principal, error) {
 	rawKey = strings.TrimSpace(rawKey)
+	if strings.HasPrefix(rawKey, sessionTokenPrefix) {
+		return a.AuthenticateSession(ctx, rawKey)
+	}
 	if !wellFormedAPIKey(rawKey) {
 		// Reject garbage before it costs a database lookup.
 		return Principal{}, ErrUnauthorized

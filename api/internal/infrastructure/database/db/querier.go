@@ -19,18 +19,25 @@ type Querier interface {
 	// Counts the fan-out of an event; replays are not part of it.
 	CountDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) (int64, error)
 	CountOrganizations(ctx context.Context) (int64, error)
+	CountUsers(ctx context.Context) (int64, error)
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateDeliveriesForEvent(ctx context.Context, arg CreateDeliveriesForEventParams) (int64, error)
 	CreateEndpoint(ctx context.Context, arg CreateEndpointParams) (Endpoint, error)
+	CreateMembership(ctx context.Context, arg CreateMembershipParams) error
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreatePortalToken(ctx context.Context, arg CreatePortalTokenParams) (PortalToken, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	CreateReplayDelivery(ctx context.Context, originalID pgtype.UUID) (CreateReplayDeliveryRow, error)
+	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Deletes up to batch_size events older than the retention period whose
 	// deliveries are all finished; deliveries and attempts cascade. Events with
 	// pending or processing deliveries are kept until those finish. SKIP LOCKED
 	// lets several workers prune at once without blocking each other.
 	DeleteExpiredEvents(ctx context.Context, arg DeleteExpiredEventsParams) (int64, error)
+	DeleteExpiredSessions(ctx context.Context) (int64, error)
+	DeleteOldRateLimitWindows(ctx context.Context) (int64, error)
+	DeleteSession(ctx context.Context, id pgtype.UUID) error
 	// oldest_due_at ignores disabled endpoints: workers do not claim their
 	// deliveries, so they are held rather than late.
 	DeliveryStatsByProject(ctx context.Context, projectID pgtype.UUID) (DeliveryStatsByProjectRow, error)
@@ -44,8 +51,13 @@ type Querier interface {
 	GetOrganization(ctx context.Context, id pgtype.UUID) (Organization, error)
 	GetPortalTokenByHash(ctx context.Context, tokenHash []byte) (GetPortalTokenByHashRow, error)
 	GetProject(ctx context.Context, id pgtype.UUID) (Project, error)
+	GetSessionByHash(ctx context.Context, tokenHash []byte) (Session, error)
+	GetUser(ctx context.Context, id pgtype.UUID) (User, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
+	HitRateLimit(ctx context.Context, arg HitRateLimitParams) (HitRateLimitRow, error)
 	InsertDeliveryAttempt(ctx context.Context, arg InsertDeliveryAttemptParams) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) (Event, error)
+	IsMember(ctx context.Context, arg IsMemberParams) (bool, error)
 	ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUID) ([]ListAPIKeysByProjectRow, error)
 	ListDeliveriesByEvent(ctx context.Context, eventID pgtype.UUID) ([]ListDeliveriesByEventRow, error)
 	// Scoped through endpoints so deliveries_endpoint_created_idx can serve each
@@ -54,6 +66,7 @@ type Querier interface {
 	ListDeliveryAttempts(ctx context.Context, deliveryID pgtype.UUID) ([]DeliveryAttempt, error)
 	ListEndpointsByProject(ctx context.Context, arg ListEndpointsByProjectParams) ([]Endpoint, error)
 	ListEventsByProject(ctx context.Context, arg ListEventsByProjectParams) ([]Event, error)
+	ListMemberships(ctx context.Context, userID pgtype.UUID) ([]Organization, error)
 	ListProjectsByOrganization(ctx context.Context, arg ListProjectsByOrganizationParams) ([]Project, error)
 	Ping(ctx context.Context) (int32, error)
 	// Instance-wide queue depth for worker metrics. Pending deliveries of
@@ -62,6 +75,7 @@ type Querier interface {
 	RevokeAPIKey(ctx context.Context, id pgtype.UUID) (ApiKey, error)
 	TouchAPIKeyLastUsed(ctx context.Context, id pgtype.UUID) error
 	UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) (Endpoint, error)
+	UpdateSessionOrganization(ctx context.Context, arg UpdateSessionOrganizationParams) error
 }
 
 var _ Querier = (*Queries)(nil)

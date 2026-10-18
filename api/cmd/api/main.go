@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math"
 	"os"
 	"os/signal"
 	"syscall"
@@ -69,10 +70,21 @@ func run() error {
 		bootstrap := application.NewBootstrapService(store.Orgs(), store.Projects(), store.Keys(), store)
 		devKeys = application.NewDevelopmentKeyService(bootstrap, store, projects)
 	}
+	accounts := application.NewAccountService(store.Accounts(), store.Sessions(), store.Orgs(), store, cfg.SignupOpen)
+	var rateCounter httpserver.SharedCounter
+	var rateLimiter *database.RateLimiter
+	if cfg.RateLimit.Shared && cfg.RateLimit.RequestsPerSecond > 0 {
+		const window = 10 * time.Second
+		limit := max(cfg.RateLimit.Burst, int(math.Ceil(cfg.RateLimit.RequestsPerSecond*window.Seconds())))
+		rateLimiter = store.NewRateLimiter(window, limit)
+		rateCounter = rateLimiter
+	}
 	server := httpserver.NewServer(cfg, httpserver.Services{
-		Auth:     application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()),
-		Portal:   application.NewPortalService(store.Projects(), store.PortalTokens()),
-		Projects: projects,
+		Accounts:    accounts,
+		RateCounter: rateCounter,
+		Auth:        application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()).WithSessions(store.Sessions()),
+		Portal:      application.NewPortalService(store.Projects(), store.PortalTokens()),
+		Projects:    projects,
 		Endpoints: application.NewEndpointService(store.Projects(), store.Endpoints(), secrets, application.EndpointRules{
 			AllowInsecureHTTP: cfg.AllowInsecureHTTP(),
 			Destinations:      application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()},
@@ -86,6 +98,8 @@ func run() error {
 		httpserver.WithReadiness(ready),
 		httpserver.WithDashboard(cfg.WebDir),
 	)
+
+	go housekeeping(ctx, logger, accounts, rateLimiter)
 
 	var ops *metrics.OpsServer
 	if cfg.MetricsAddr != "" {
@@ -117,4 +131,26 @@ func run() error {
 		}
 	}
 	return nil
+}
+
+// housekeeping removes expired sessions and finished rate-limit windows. Every
+// replica runs it; the deletes are idempotent.
+func housekeeping(ctx context.Context, logger *slog.Logger, accounts *application.AccountService, limiter *database.RateLimiter) {
+	tick := time.NewTicker(10 * time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		if _, err := accounts.DeleteExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+			logger.Warn("deleting expired sessions failed", "error", err)
+		}
+		if limiter != nil {
+			if _, err := limiter.Prune(ctx); err != nil && ctx.Err() == nil {
+				logger.Warn("pruning rate limit counters failed", "error", err)
+			}
+		}
+	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,14 @@ type Config struct {
 
 	RateLimit RateLimitConfig
 
+	// TrustedProxies are addresses or CIDR ranges of reverse proxies whose
+	// X-Forwarded-For header is believed; empty trusts none.
+	TrustedProxies []string
+
+	// SignupOpen lets anyone create an account. When false only the first
+	// account can be created (to claim a fresh install).
+	SignupOpen bool
+
 	Worker WorkerConfig
 }
 
@@ -48,6 +57,9 @@ type Config struct {
 type RateLimitConfig struct {
 	RequestsPerSecond float64
 	Burst             int
+	// Shared counts requests in PostgreSQL so all API replicas share one
+	// limit, instead of each replica enforcing its own.
+	Shared bool
 }
 
 type WorkerConfig struct {
@@ -128,6 +140,26 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	for _, p := range strings.Split(os.Getenv("TRUSTED_PROXIES"), ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(p); err != nil && net.ParseIP(p) == nil {
+			return Config{}, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP address or CIDR range", p)
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, p)
+	}
+
+	cfg.SignupOpen = cfg.AppEnv != AppEnvProduction
+	if raw := strings.TrimSpace(os.Getenv("SIGNUP_ENABLED")); raw != "" {
+		open, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("SIGNUP_ENABLED must be true or false")
+		}
+		cfg.SignupOpen = open
+	}
+
 	worker, err := loadWorker()
 	if err != nil {
 		return Config{}, err
@@ -144,6 +176,13 @@ func loadRateLimit() (RateLimitConfig, error) {
 		return r, fmt.Errorf("RATE_LIMIT_RPS must be a number between 0 and 100000, where 0 disables limiting")
 	}
 	r.RequestsPerSecond = rps
+	switch store := strings.ToLower(getenv("RATE_LIMIT_STORE", "memory")); store {
+	case "memory":
+	case "postgres":
+		r.Shared = true
+	default:
+		return r, fmt.Errorf("RATE_LIMIT_STORE must be memory or postgres")
+	}
 	if r.Burst, err = getInt("RATE_LIMIT_BURST", 200, 1, 1000000); err != nil {
 		return r, err
 	}

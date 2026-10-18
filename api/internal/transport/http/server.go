@@ -25,6 +25,10 @@ type Services struct {
 	DevKeys *application.DevelopmentKeyService
 	// Portal issues customer portal links; nil disables portal routes.
 	Portal *application.PortalService
+	// Accounts enables sign-up and sign-in; nil disables /v1/auth.
+	Accounts *application.AccountService
+	// RateCounter is the PostgreSQL counter used when RATE_LIMIT_STORE=postgres.
+	RateCounter SharedCounter
 }
 
 type Server struct {
@@ -37,14 +41,22 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	app := fiber.New(fiber.Config{
+	fiberConfig := fiber.Config{
 		BodyLimit:    maxRequestBodyBytes,
 		ErrorHandler: frameworkErrorHandler,
 		// Bound slow clients so they cannot hold connections open.
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
-	})
+	}
+	if len(cfg.TrustedProxies) > 0 {
+		// Believe X-Forwarded-For only from these proxies, so clients cannot
+		// pick their own address.
+		fiberConfig.TrustProxy = true
+		fiberConfig.ProxyHeader = fiber.HeaderXForwardedFor
+		fiberConfig.TrustProxyConfig = fiber.TrustProxyConfig{Proxies: cfg.TrustedProxies}
+	}
+	app := fiber.New(fiberConfig)
 	app.Use(requestContext(o))
 	app.Use(securityHeaders)
 	// healthz: the process is up. readyz: it can serve traffic (database
@@ -79,7 +91,26 @@ func NewServer(cfg config.Config, svc Services, opts ...Option) *Server {
 	read, ingest, admin := requireScope(domain.ScopeRead), requireScope(domain.ScopeIngest), requireScope(domain.ScopeAdmin)
 	v1 := app.Group("/v1")
 	if limit := cfg.RateLimit; limit.RequestsPerSecond > 0 {
-		v1.Use(rateLimit(newRateLimiter(limit.RequestsPerSecond, limit.Burst, time.Now)))
+		var limiter allower = newRateLimiter(limit.RequestsPerSecond, limit.Burst, time.Now)
+		if limit.Shared && svc.RateCounter != nil {
+			limiter = sharedAllower{counter: svc.RateCounter, onError: func(err error) {
+				o.logger.Warn("shared rate limit unavailable; allowing request", "error", err)
+			}}
+		}
+		v1.Use(rateLimit(limiter))
+	}
+
+	if svc.Accounts != nil {
+		accounts := accountHandler{accounts: svc.Accounts}
+		// Passwords are guessable, so sign-up and sign-in get a much tighter
+		// limit per client address than the rest of the API.
+		credentials := rateLimit(newRateLimiter(0.2, 10, time.Now))
+		v1.Post("/auth/signup", credentials, accounts.signUp)
+		v1.Post("/auth/signin", credentials, accounts.signIn)
+		v1.Get("/auth/me", auth, accounts.me)
+		v1.Post("/auth/signout", auth, accounts.signOut)
+		v1.Post("/auth/organizations", auth, accounts.createOrganization)
+		v1.Post("/auth/switch-organization", auth, accounts.switchOrganization)
 	}
 	v1.Post("/projects", auth, admin, projects.create)
 	v1.Get("/projects", auth, read, projects.list)

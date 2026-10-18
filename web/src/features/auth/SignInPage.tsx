@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ApiClient, publicApi } from "../../shared/api/client";
+import { ApiClient, ApiError, publicApi } from "../../shared/api/client";
 import { describeError } from "../../shared/errors";
 import { looksLikeAPIKey } from "../../shared/session";
 import { productName } from "../../shared/product";
@@ -17,6 +17,7 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
   const [checking, setChecking] = useState(false);
   const [api, setApi] = useState<ApiState>("checking");
   const [development, setDevelopment] = useState(false);
+  const [mode, setMode] = useState<"account" | "key">("account");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,33 +81,46 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
         </section>
 
         <div className="signin-side">
-          <form className="panel signin-panel" onSubmit={submit}>
-            <h2>{t("signin.title")}</h2>
+          <div className="panel signin-panel">
+            <div className="segmented" role="group" aria-label={t("signin.title")}>
+              <button type="button" aria-pressed={mode === "account"} onClick={() => setMode("account")}>
+                {t("signin.tabAccount")}
+              </button>
+              <button type="button" aria-pressed={mode === "key"} onClick={() => setMode("key")}>
+                {t("signin.tabKey")}
+              </button>
+            </div>
             {notice && (
               <p className="notice" role="status">
                 {notice}
               </p>
             )}
-            <label htmlFor="api-key">{t("signin.keyLabel")}</label>
-            <input
-              id="api-key"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="hlk_…"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-            />
-            {error && (
-              <p className="field-error" role="alert">
-                {error}
-              </p>
+            {mode === "account" ? (
+              <AccountForm onSignedIn={onSignedIn} />
+            ) : (
+              <form onSubmit={submit}>
+                <label htmlFor="api-key">{t("signin.keyLabel")}</label>
+                <input
+                  id="api-key"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="hlk_…"
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                />
+                {error && (
+                  <p className="field-error" role="alert">
+                    {error}
+                  </p>
+                )}
+                <button type="submit" className="button button-primary" disabled={checking || key.trim() === ""}>
+                  {checking ? t("common.checking") : t("signin.submit")}
+                </button>
+                <p className="hint">{t("signin.keyNote", { name: productName })}</p>
+              </form>
             )}
-            <button type="submit" className="button button-primary" disabled={checking || key.trim() === ""}>
-              {checking ? t("common.checking") : t("signin.submit")}
-            </button>
-            <p className="hint">{t("signin.keyNote", { name: productName })}</p>
-          </form>
+          </div>
 
           {development ? (
             <DevelopmentKey onUse={onSignedIn} />
@@ -122,6 +136,82 @@ export function SignInPage({ onSignedIn, notice }: { onSignedIn: (key: string) =
       </div>
     </main>
   );
+}
+
+function AccountForm({ onSignedIn }: { onSignedIn: (token: string) => void }) {
+  const [creating, setCreating] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [organization, setOrganization] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const session = creating ? await publicApi.signUp(email.trim(), password, organization.trim()) : await publicApi.signIn(email.trim(), password);
+      onSignedIn(session.token);
+    } catch (err) {
+      setError(describeAccountError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <label htmlFor="account-email">{t("signin.email")}</label>
+      <input id="account-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <label htmlFor="account-password">{t("signin.password")}</label>
+      <input
+        id="account-password"
+        type="password"
+        autoComplete={creating ? "new-password" : "current-password"}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      {creating && (
+        <>
+          <p className="hint">{t("signin.passwordHint")}</p>
+          <label htmlFor="account-organization">{t("signin.organization")}</label>
+          <input id="account-organization" type="text" autoComplete="organization" value={organization} onChange={(e) => setOrganization(e.target.value)} />
+        </>
+      )}
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      <button type="submit" className="button button-primary" disabled={busy || email.trim() === "" || password === ""}>
+        {busy ? t("common.checking") : creating ? t("signin.createAccount") : t("signin.submit")}
+      </button>
+      <button type="button" className="button button-ghost" onClick={() => setCreating(!creating)}>
+        {creating ? t("signin.haveAccount") : t("signin.needAccount")}
+      </button>
+    </form>
+  );
+}
+
+function describeAccountError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case "invalid_credentials":
+        return t("signin.invalidCredentials");
+      case "email_taken":
+        return t("signin.emailTaken");
+      case "signup_disabled":
+        return t("signin.signupDisabled");
+      case "invalid_input":
+        return t("signin.invalidInput");
+      case "rate_limited":
+        return t("signin.tooMany");
+    }
+    if (err.status === 429) return t("signin.tooMany");
+    return describeError(err);
+  }
+  return t("signin.failed");
 }
 
 function ApiStatus({ state }: { state: ApiState }) {
