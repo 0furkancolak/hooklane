@@ -1,8 +1,20 @@
-.PHONY: dev test test-integration test-db build sqlc-up db-up db-down migrate-up migrate-status dev-api dev-worker dev-web bootstrap
+.PHONY: dev check lint vuln test test-integration test-db build sqlc-up db-up db-down migrate-up migrate-status dev-api dev-worker dev-web bootstrap
 
 DATABASE_URL ?= postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane?sslmode=disable
 TEST_DATABASE_URL ?= postgres://hooklane:local_dev_only_change_me@localhost:5433/hooklane_test?sslmode=disable
 GOOSE = cd api && go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres
+
+# Everything CI runs, in one command. Needs golangci-lint and govulncheck:
+#   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+#   go install golang.org/x/vuln/cmd/govulncheck@latest
+check: lint test vuln
+
+lint:
+	cd api && test -z "$$(gofmt -l .)" && golangci-lint run ./...
+	cd web && npm run typecheck && npm run lint
+
+vuln:
+	cd api && govulncheck ./...
 
 test:
 	cd api && go vet ./... && go test -race ./...

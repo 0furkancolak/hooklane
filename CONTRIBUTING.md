@@ -42,7 +42,8 @@ CI runs the same commands; run them before opening a pull request:
 ```sh
 cd api && gofmt -l . && go vet ./... && go test -race ./...
 make test-integration
-cd web && npm run lint && npm test && npm run build
+make check
+cd web && npm run build
 ```
 
 ## Pull requests

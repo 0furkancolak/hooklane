@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+
 	"github.com/0furkancolak/hooklane/api/internal/application"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"

@@ -2,7 +2,6 @@ package webhook
 
 import (
 	"context"
-	"github.com/0furkancolak/hooklane/api/internal/application"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/0furkancolak/hooklane/api/internal/application"
 )
 
 const testSecret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"

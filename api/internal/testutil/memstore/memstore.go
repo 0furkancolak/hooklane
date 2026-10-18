@@ -7,10 +7,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/0furkancolak/hooklane/api/internal/application"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/0furkancolak/hooklane/api/internal/application"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/google/uuid"

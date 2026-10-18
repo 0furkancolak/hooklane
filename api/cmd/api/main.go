@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -21,9 +22,15 @@ import (
 var version = "dev"
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -31,16 +38,16 @@ func main() {
 
 	pool, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
 	if len(cfg.EndpointSecretKey) == 0 {
-		log.Fatal("ENDPOINT_SECRET_KEY is required; generate one with: openssl rand -base64 32")
+		return errors.New("ENDPOINT_SECRET_KEY is required; generate one with: openssl rand -base64 32")
 	}
 	secrets, err := application.NewSecretBox(cfg.EndpointSecretKey)
 	if err != nil {
-		log.Fatalf("ENDPOINT_SECRET_KEY: %v", err)
+		return fmt.Errorf("ENDPOINT_SECRET_KEY: %w", err)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -94,7 +101,7 @@ func main() {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	case <-ctx.Done():
 		logger.Info("api shutting down")
@@ -107,4 +114,5 @@ func main() {
 			_ = ops.Shutdown(shutdownCtx)
 		}
 	}
+	return nil
 }

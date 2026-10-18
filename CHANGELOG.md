@@ -9,6 +9,7 @@ include breaking changes, which are called out.
 
 ### Added
 
+- `make check` runs gofmt, golangci-lint, the TypeScript typecheck, oxlint, all tests and govulncheck; CI runs the same checks.
 - `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.
 - Dashboard API keys page: generate a key for a project (shown once, with a copy button), see each key's prefix and status, and revoke it.
 - Sign-in screen with a feature overview and API status. With `APP_ENV=development` it can generate a development key (loopback requests only, `POST /v1/dev/api-keys`), so a database that was bootstrapped earlier no longer needs the admin CLI.

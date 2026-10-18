@@ -3,8 +3,9 @@ package database
 import (
 	"context"
 	"errors"
-	"github.com/0furkancolak/hooklane/api/internal/application"
 	"time"
+
+	"github.com/0furkancolak/hooklane/api/internal/application"
 
 	"github.com/0furkancolak/hooklane/api/internal/domain"
 	"github.com/0furkancolak/hooklane/api/internal/infrastructure/database/db"
