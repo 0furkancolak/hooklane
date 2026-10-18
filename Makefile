@@ -69,3 +69,15 @@ bootstrap:
 		-org-slug "$(ORG_SLUG)" \
 		-project-name "$(PROJECT_NAME)" \
 		-key-name "$(KEY_NAME)"
+
+# Load test against a running stack (needs APP_ENV=development on the API and
+# worker; see docs/deployment.md#sizing). Example:
+#   make loadtest KEY=hl_... PROJECT=<project id> EVENTS=5000
+LOADTEST_URL ?= http://127.0.0.1:8090
+EVENTS ?= 2000
+CONCURRENCY ?= 16
+loadtest:
+	cd scripts/loadtest && go run . -url "$(LOADTEST_URL)" -key "$(KEY)" -project "$(PROJECT)" \
+		-events $(EVENTS) -concurrency $(CONCURRENCY) $(LOADTEST_ARGS)
+
+.PHONY: loadtest

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,7 +130,11 @@ func TestIntegrationScopesAndPortalTokensRoundTrip(t *testing.T) {
 	if err := tn.pool.QueryRow(ctx, `SELECT count(*) FROM portal_tokens WHERE project_id = $1 AND token_hash <> $2`, tn.project.ID, []byte(link.Token)).Scan(&stored); err != nil || stored != 1 {
 		t.Fatalf("token must be stored hashed: %d %v", stored, err)
 	}
-	if _, _, err := auth.AuthenticatePortal(ctx, "hlp_"+link.Token[4:len(link.Token)-1]+"0"); !errors.Is(err, application.ErrUnauthorized) {
+	last := "0"
+	if strings.HasSuffix(link.Token, "0") {
+		last = "1"
+	}
+	if _, _, err := auth.AuthenticatePortal(ctx, link.Token[:len(link.Token)-1]+last); !errors.Is(err, application.ErrUnauthorized) {
 		t.Fatalf("wrong token: %v", err)
 	}
 }

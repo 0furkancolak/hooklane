@@ -1,0 +1,31 @@
+# Optional. Written for ingress-nginx; adapt the annotations for another
+# controller. Replace the host and the TLS secret, then uncomment it in
+# kustomization.yaml.
+#
+# The API limits per client address and does not trust X-Forwarded-For, so
+# behind an ingress it would see only the ingress pods. RATE_LIMIT_RPS is
+# therefore 0 in the ConfigMap and the limit is applied here, per real client.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hooklane
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "4"
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [hooklane.example.com]
+      secretName: hooklane-tls
+  rules:
+    - host: hooklane.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hooklane-api
+                port:
+                  name: http

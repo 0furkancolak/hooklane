@@ -13,6 +13,8 @@ include breaking changes, which are called out.
 
 ### Added
 
+- `hooklane-admin migrate up` holds a PostgreSQL advisory lock, so concurrent runs are safe.
+- One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
 - Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.
 - API key scopes: `admin`, `ingest` (send events only) and `read`, chosen when a key is created (dashboard and API). Existing keys stay `admin`. Revealing endpoint secrets now needs `admin`.
 - `LOG_FORMAT=pretty|json`: coloured one-line logs by default in development (JSON elsewhere).
