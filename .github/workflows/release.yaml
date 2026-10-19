@@ -92,10 +92,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Only the archives: the run also holds a Docker build-record artifact
+      # whose name cannot be downloaded, which failed the job.
       - uses: actions/download-artifact@v4
         with:
+          pattern: binaries-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashboard
+          path: dist
       - name: Checksums
         run: cd dist && sha256sum *.tar.gz > SHA256SUMS
       - name: Release notes from CHANGELOG
