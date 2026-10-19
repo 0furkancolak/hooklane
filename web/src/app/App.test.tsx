@@ -13,6 +13,7 @@ describe("App", () => {
     const { fetch, calls } = fakeFetch({});
     vi.stubGlobal("fetch", fetch);
     render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "API key" }));
     await userEvent.type(screen.getByLabelText("API key"), "not-a-key");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(screen.getByRole("alert")).toHaveTextContent("does not look like");
@@ -23,6 +24,7 @@ describe("App", () => {
     const { fetch, calls } = fakeFetch({ "GET /v1/projects": () => ({ body: page("projects", [project]) }) });
     vi.stubGlobal("fetch", fetch);
     render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "API key" }));
     await userEvent.type(screen.getByLabelText("API key"), testKey);
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
@@ -42,7 +44,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetch);
     render(<App />);
     expect(await screen.findByText(/sign in again/)).toBeInTheDocument();
-    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(sessionStorage.getItem("hooklane.apiKey")).toBeNull();
   });
 

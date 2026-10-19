@@ -1,4 +1,6 @@
 import type {
+  Account,
+  AccountSession,
   APIKey,
   Attempt,
   CreatedAPIKey,
@@ -48,6 +50,27 @@ export class ApiClient {
     this.key = key;
     this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
     this.onUnauthorized = options.onUnauthorized;
+  }
+
+  /** True when signed in with an account (a session token) rather than an API key. */
+  get isSession(): boolean {
+    return this.key.startsWith("hls_");
+  }
+
+  me(signal?: AbortSignal) {
+    return this.get<Account>("/v1/auth/me", signal);
+  }
+
+  signOutSession() {
+    return this.send<void>("POST", "/v1/auth/signout");
+  }
+
+  createOrganization(name: string) {
+    return this.send<Account>("POST", "/v1/auth/organizations", { name });
+  }
+
+  switchOrganization(organizationId: string) {
+    return this.send<Account>("POST", "/v1/auth/switch-organization", { organization_id: organizationId });
   }
 
   listProjects(page: PageParams = {}, signal?: AbortSignal) {
@@ -248,6 +271,14 @@ export const publicApi = {
     }
   },
 
+  signUp(email: string, password: string, organizationName: string): Promise<AccountSession> {
+    return postJSON<AccountSession>("/v1/auth/signup", { email, password, organization_name: organizationName });
+  },
+
+  signIn(email: string, password: string): Promise<AccountSession> {
+    return postJSON<AccountSession>("/v1/auth/signin", { email, password });
+  },
+
   async issueDevelopmentKey(): Promise<CreatedAPIKey> {
     let response: Response;
     try {
@@ -285,4 +316,24 @@ function query(params: Record<string, string | number | boolean | undefined>): s
   }
   const encoded = search.toString();
   return encoded ? `?${encoded}` : "";
+}
+
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "network_error", "Could not reach the Hooklane API");
+  }
+  const data = safeJSON(await response.text());
+  if (!response.ok) {
+    const detail = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
+    throw new ApiError(response.status, detail?.code ?? "http_error", detail?.message ?? `Request failed (${response.status})`);
+  }
+  return data as T;
 }

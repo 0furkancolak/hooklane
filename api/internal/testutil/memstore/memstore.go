@@ -45,6 +45,9 @@ type Store struct {
 	txMu  sync.Mutex
 	state state
 
+	accountsOnce sync.Once
+	acct         *accountState
+
 	// FailDeliveries makes delivery creation fail after the event was
 	// inserted, to exercise transaction rollback.
 	FailDeliveries error

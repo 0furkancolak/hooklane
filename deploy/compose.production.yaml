@@ -90,6 +90,11 @@ services:
       # (HOOKLANE_RATE_LIMIT_RPS) instead.
       RATE_LIMIT_RPS: ${HOOKLANE_API_RATE_LIMIT_RPS:-0}
       RATE_LIMIT_BURST: ${HOOKLANE_API_RATE_LIMIT_BURST:-200}
+      # nginx sets X-Forwarded-For to the real client; believe it from the
+      # Compose network only, so sign-in limits apply per client.
+      TRUSTED_PROXIES: ${HOOKLANE_TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # Only the first account can be created unless you open sign-up.
+      SIGNUP_ENABLED: ${HOOKLANE_SIGNUP_ENABLED:-false}
     expose: ["8080", "9101"]
     tmpfs: [/tmp]
     depends_on:

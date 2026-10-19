@@ -68,6 +68,13 @@ type Event struct {
 	Customer       pgtype.Text
 }
 
+type Membership struct {
+	UserID         pgtype.UUID
+	OrganizationID pgtype.UUID
+	Role           string
+	CreatedAt      pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID        pgtype.UUID
 	Name      string
@@ -89,4 +96,26 @@ type Project struct {
 	OrganizationID pgtype.UUID
 	Name           string
 	CreatedAt      pgtype.Timestamptz
+}
+
+type RateLimitWindow struct {
+	Key         string
+	WindowStart pgtype.Timestamptz
+	Hits        int32
+}
+
+type Session struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	OrganizationID pgtype.UUID
+	TokenHash      []byte
+	ExpiresAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+}
+
+type User struct {
+	ID           pgtype.UUID
+	Email        string
+	PasswordHash string
+	CreatedAt    pgtype.Timestamptz
 }

@@ -251,6 +251,12 @@ curl -X POST localhost:8090/v1/projects/$PROJECT_ID/events \
 
 The dashboard speaks English and Turkish (it follows the browser language and remembers your choice; switch it in the sidebar). The light and dark themes share one neutral design, follow your system setting and can be switched in the sidebar. Lists keep their filters, page size and page in the URL, so any view can be bookmarked or shared.
 
+### Accounts
+
+People sign in with an email and password (**Account** tab); the **API key** tab still works for machines and the CLI. The first account claims a new install. After that, sign-up is open only in development, or in production when you set `SIGNUP_ENABLED=true`. One user can own several organizations and switch between them from the sidebar; each organization has its own projects. There are no invitations yet, so an organization has exactly one owner.
+
+Under the hood a sign-in is a `hls_` bearer token (valid for seven days, stored hashed, revoked by signing out) that acts as an admin of the organization it is working in, on every route an `admin` API key can use, plus `/v1/auth/*`.
+
 ### Try it without writing code: the playground
 
 Open a project and choose **Playground**. It walks through the whole flow with real data: pick a receiver, write an event (or start from a template), send it, and watch the delivery, each attempt and what the receiver actually got, including the `webhook-signature` header. With `APP_ENV=development` there is a built-in receiver (it can answer `200` or `503`, so you can watch retries); otherwise give it any public URL, for example one from webhook.site.
@@ -344,6 +350,8 @@ Endpoint URLs are chosen by tenants, so the worker treats every destination as u
 **Limits.** Request bodies are capped at 1 MiB and event payloads at 256 KiB. Only the first 4 KiB of a response body is read and stored. Outbound requests have connect, TLS, header and total timeouts. The API applies read, write and idle timeouts.
 
 **Credentials and logs.** API keys are stored as SHA-256 hashes, and malformed keys are rejected before any database lookup. Endpoint secrets are encrypted at rest with AES-256-GCM and returned only by the create and `/secret` routes. Request logs do not include headers, payloads or secrets. Attempt errors store the destination without its query string, because receivers sometimes put tokens there. Every API response carries `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+
+**Passwords and sessions.** Passwords are hashed with argon2id (19 MiB, two passes, random salt) and compared in constant time; a sign-in for an unknown email costs the same as a real one and returns the same error. At most four hashes run at once so sign-up cannot exhaust memory, and sign-up and sign-in are limited per client address on top of the general rate limit. Passwords must have at least 10 characters. Session tokens are stored as SHA-256 hashes and expire after seven days; signing out deletes the session. Sessions and API keys use the same header but never each other's routes: an API key cannot call `/v1/auth/me`, and neither is accepted on the portal.
 
 **Tenant isolation.** The tenant is always taken from the API key, never from the request. Every route that takes a resource ID returns `403` for resources owned by another organization. A test exercises each of these routes.
 

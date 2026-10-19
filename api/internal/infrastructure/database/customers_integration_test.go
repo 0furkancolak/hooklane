@@ -10,6 +10,7 @@ import (
 
 	"github.com/0furkancolak/hooklane/api/internal/application"
 	"github.com/0furkancolak/hooklane/api/internal/domain"
+	"github.com/google/uuid"
 )
 
 func (tn tenant) addCustomerEndpoint(t *testing.T, customer string) domain.Endpoint {
@@ -137,4 +138,81 @@ func TestIntegrationScopesAndPortalTokensRoundTrip(t *testing.T) {
 	if _, _, err := auth.AuthenticatePortal(ctx, link.Token[:len(link.Token)-1]+last); !errors.Is(err, application.ErrUnauthorized) {
 		t.Fatalf("wrong token: %v", err)
 	}
+}
+
+func TestIntegrationAccountsSessionsAndSharedRateLimit(t *testing.T) {
+	tn := newTenant(t)
+	ctx := context.Background()
+	store := tn.store
+
+	accounts := application.NewAccountService(store.Accounts(), store.Sessions(), store.Orgs(), store, true)
+	auth := application.NewAuthenticator(store.Keys()).WithSessions(store.Sessions())
+	email := "it-" + uuid.NewString() + "@example.com"
+	signedIn, err := accounts.SignUp(ctx, email, "correct horse battery", "Integration Co")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = tn.pool.Exec(context.Background(), `DELETE FROM organizations WHERE id IN (SELECT organization_id FROM memberships WHERE user_id = $1)`, signedIn.Account.User.ID)
+		_, _ = tn.pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, signedIn.Account.User.ID)
+	})
+
+	if _, err := accounts.SignUp(ctx, strings.ToUpper(email), "correct horse battery", ""); !errors.Is(err, application.ErrEmailTaken) {
+		t.Fatalf("duplicate email: %v", err)
+	}
+	var stored string
+	if err := tn.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, signedIn.Account.User.ID).Scan(&stored); err != nil || !strings.HasPrefix(stored, "$argon2id$") || strings.Contains(stored, "correct horse") {
+		t.Fatalf("password must be stored as an argon2id hash: %q %v", stored, err)
+	}
+	var tokenInDB int
+	if err := tn.pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE token_hash = $1`, []byte(signedIn.Token)).Scan(&tokenInDB); err != nil || tokenInDB != 0 {
+		t.Fatalf("session token must be stored hashed: %d %v", tokenInDB, err)
+	}
+
+	principal, err := auth.Authenticate(ctx, signedIn.Token)
+	if err != nil || !principal.IsSession() || principal.OrganizationID != signedIn.Account.Organization.ID || !principal.Can(domain.ScopeAdmin) {
+		t.Fatalf("session principal = %+v, %v", principal, err)
+	}
+
+	second, err := accounts.CreateOrganization(ctx, principal, "Second")
+	if err != nil || len(second.Organizations) != 2 || second.Organization.Name != "Second" {
+		t.Fatalf("second org: %+v %v", second, err)
+	}
+	if p, _ := auth.Authenticate(ctx, signedIn.Token); p.OrganizationID != second.Organization.ID {
+		t.Fatal("session did not move into the new organization")
+	}
+	again, err := accounts.SignIn(ctx, email, "correct horse battery")
+	if err != nil || again.Account.Organization.ID != signedIn.Account.Organization.ID {
+		t.Fatalf("sign-in lands in the first organization: %+v %v", again.Account.Organization, err)
+	}
+	if err := accounts.SignOut(ctx, principal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.Authenticate(ctx, signedIn.Token); !errors.Is(err, application.ErrUnauthorized) {
+		t.Fatalf("signed-out session: %v", err)
+	}
+
+	limiter := store.NewRateLimiter(10*time.Second, 3)
+	key := "it-" + uuid.NewString()
+	var allowed int
+	for range 6 {
+		ok, wait, err := limiter.Allow(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			allowed++
+		} else if wait <= 0 || wait > 10*time.Second {
+			t.Fatalf("wait = %s", wait)
+		}
+	}
+	if allowed != 3 {
+		t.Fatalf("allowed %d of 6, want 3", allowed)
+	}
+	if ok, _, _ := limiter.Allow(ctx, key+"-other"); !ok {
+		t.Fatal("another key was limited")
+	}
+	t.Cleanup(func() {
+		_, _ = tn.pool.Exec(context.Background(), `DELETE FROM rate_limit_windows WHERE key LIKE 'it-%'`)
+	})
 }

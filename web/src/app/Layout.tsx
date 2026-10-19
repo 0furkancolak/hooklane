@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import { useApi } from "../shared/api/context";
 import { href, useRoute, type Route } from "../shared/router";
 import { useAsync } from "../shared/useAsync";
@@ -6,6 +7,7 @@ import { Empty } from "../shared/ui/States";
 import { Icon, type IconName } from "../shared/ui/Icon";
 import { useTheme } from "../shared/theme";
 import { languages, t, useLang } from "../shared/i18n";
+import { describeError } from "../shared/errors";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { OverviewPage } from "../features/projects/OverviewPage";
 import { PlaygroundPage } from "../features/playground/PlaygroundPage";
@@ -33,6 +35,7 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
         </a>
         {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <HomeNav />}
         <div className="sidebar-foot">
+          {api.isSession && <AccountMenu />}
           <div className="segmented" role="group" aria-label={t("nav.language")}>
             {languages.map((l) => (
               <button key={l.code} type="button" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>
@@ -191,4 +194,80 @@ function Page({ route }: { route: Route }) {
         </Empty>
       );
   }
+}
+
+function AccountMenu() {
+  const api = useApi();
+  const [state] = useAsync((signal) => api.me(signal), [api]);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // The active organization decides which projects the API returns, so a
+  // switch reloads everything from the projects list.
+  function enter() {
+    window.location.hash = "#/projects";
+    window.location.reload();
+  }
+
+  async function switchTo(id: string) {
+    setError(null);
+    try {
+      await api.switchOrganization(id);
+      enter();
+    } catch (err) {
+      setError(err instanceof Error ? describeError(err) : t("account.failed"));
+    }
+  }
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await api.createOrganization(name.trim());
+      enter();
+    } catch (err) {
+      setError(err instanceof Error ? describeError(err) : t("account.failed"));
+    }
+  }
+
+  if (state.status !== "ready") return null;
+  const { user, organization, organizations } = state.data;
+  return (
+    <div className="account-menu">
+      <small className="muted" title={user.email}>
+        {user.email}
+      </small>
+      <label htmlFor="org-switch">{t("account.organization")}</label>
+      <select id="org-switch" value={organization.id} onChange={(e) => void switchTo(e.target.value)}>
+        {organizations.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+      {adding ? (
+        <form onSubmit={(e) => void create(e)}>
+          <input aria-label={t("account.newOrganizationName")} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("account.newOrganizationName")} />
+          <div className="actions">
+            <button type="submit" className="button button-primary" disabled={name.trim() === ""}>
+              {t("account.create")}
+            </button>
+            <button type="button" className="button" onClick={() => setAdding(false)}>
+              {t("account.cancel")}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className="button button-ghost" onClick={() => setAdding(true)}>
+          {t("account.newOrganization")}
+        </button>
+      )}
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }

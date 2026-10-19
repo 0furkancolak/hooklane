@@ -103,3 +103,13 @@ export function isTerminal(status: DeliveryStatus): boolean {
 export type PortalLink = { token: string; customer: string; expires_at: string; path: string };
 
 export type PortalMe = { customer: string; project_name: string; expires_at: string };
+
+export type Organization = { id: string; name: string; slug: string };
+
+export type Account = {
+  user: { id: string; email: string };
+  organization: Organization;
+  organizations: Organization[];
+};
+
+export type AccountSession = Account & { token: string; expires_at: string };

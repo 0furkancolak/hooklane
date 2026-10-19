@@ -43,7 +43,13 @@ function AdminApp() {
   }
   return (
     <ApiContext.Provider value={client}>
-      <Layout onSignOut={() => signOut()} />
+      <Layout
+        onSignOut={() => {
+          // Ending the session on the server makes the token useless if it leaked.
+          if (client.isSession) void client.signOutSession().catch(() => undefined);
+          signOut();
+        }}
+      />
     </ApiContext.Provider>
   );
 }

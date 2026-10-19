@@ -13,6 +13,8 @@ include breaking changes, which are called out.
 
 ### Added
 
+- Dashboard accounts: sign up and sign in with email and password (argon2id; sessions are `hls_` bearer tokens that expire after seven days), one user in several organizations with a switcher, and `POST /v1/auth/{signup,signin,signout,organizations,switch-organization}` plus `GET /v1/auth/me`. Only the first account can be created in production unless `SIGNUP_ENABLED=true`. Sign-up and sign-in are rate limited per client address.
+- `RATE_LIMIT_STORE=postgres` shares the rate limit across API replicas, and `TRUSTED_PROXIES` makes the API believe `X-Forwarded-For` from the listed proxies only.
 - `hooklane-admin migrate up` holds a PostgreSQL advisory lock, so concurrent runs are safe.
 - One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
 - Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.

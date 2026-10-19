@@ -52,7 +52,8 @@ func newTestEnv(t *testing.T, env config.AppEnv, opts ...Option) testEnv {
 	}
 	cfg := config.Config{Port: "8080", AppEnv: env}
 	server := NewServer(cfg, Services{
-		Auth:       application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()),
+		Accounts:   application.NewAccountService(store.Accounts(), store.Sessions(), store.Orgs(), store, true),
+		Auth:       application.NewAuthenticator(store.Keys()).WithPortalTokens(store.PortalTokens()).WithSessions(store.Sessions()),
 		Portal:     application.NewPortalService(store.Projects(), store.PortalTokens()),
 		Projects:   application.NewProjectService(store.Projects(), store.Keys()),
 		Endpoints:  application.NewEndpointService(store.Projects(), store.Endpoints(), box, application.EndpointRules{AllowInsecureHTTP: cfg.AllowInsecureHTTP(), Destinations: application.DestinationPolicy{AllowPrivateNetworks: cfg.AllowPrivateNetworks()}}),
@@ -215,4 +216,18 @@ func TestDeliveryRoutes(t *testing.T) {
 	if resp.StatusCode != stdhttp.StatusForbidden {
 		t.Fatalf("cross-tenant list: %d", resp.StatusCode)
 	}
+}
+
+// newClosedSignupEnv is a server where only the first account can be created.
+func newClosedSignupEnv(t *testing.T) testEnv {
+	t.Helper()
+	env := newTestEnv(t, config.AppEnvDevelopment)
+	store := env.store
+	server := NewServer(config.Config{Port: "8080", AppEnv: config.AppEnvDevelopment}, Services{
+		Accounts: application.NewAccountService(store.Accounts(), store.Sessions(), store.Orgs(), store, false),
+		Auth:     application.NewAuthenticator(store.Keys()).WithSessions(store.Sessions()),
+		Projects: application.NewProjectService(store.Projects(), store.Keys()),
+	}, WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
+	env.server = server
+	return env
 }

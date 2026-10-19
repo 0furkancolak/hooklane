@@ -35,6 +35,25 @@ type PortalTokenRepository interface {
 	GetByHash(ctx context.Context, hash []byte) (domain.PortalToken, error)
 }
 
+type AccountRepository interface {
+	// CreateUser returns ErrEmailTaken when the email is already registered.
+	CreateUser(ctx context.Context, email, passwordHash string) (domain.User, error)
+	GetUserByEmail(ctx context.Context, email string) (domain.User, error)
+	GetUser(ctx context.Context, id uuid.UUID) (domain.User, error)
+	CountUsers(ctx context.Context) (int64, error)
+	AddMembership(ctx context.Context, userID, organizationID uuid.UUID) error
+	ListOrganizations(ctx context.Context, userID uuid.UUID) ([]domain.Organization, error)
+	IsMember(ctx context.Context, userID, organizationID uuid.UUID) (bool, error)
+}
+
+type SessionRepository interface {
+	Create(ctx context.Context, session domain.Session) (domain.Session, error)
+	GetByHash(ctx context.Context, hash []byte) (domain.Session, error)
+	SetOrganization(ctx context.Context, id, organizationID uuid.UUID) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteExpired(ctx context.Context) (int64, error)
+}
+
 type EndpointRepository interface {
 	Create(ctx context.Context, endpoint domain.Endpoint) (domain.Endpoint, error)
 	Get(ctx context.Context, id uuid.UUID) (domain.Endpoint, error)

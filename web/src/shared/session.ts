@@ -31,3 +31,8 @@ export function clearKey(): void {
 export function looksLikeAPIKey(value: string): boolean {
   return /^hlk_[0-9a-f]{64}$/.test(value.trim());
 }
+
+/** Dashboard sessions (from an account sign-in) are `hls_` tokens. */
+export function isSessionToken(value: string | null): boolean {
+  return value !== null && /^hls_[0-9a-f]{48}$/.test(value);
+}

@@ -10,6 +10,13 @@ data:
   # ingress instead (see ingress.yaml). Set a number to limit per pod.
   RATE_LIMIT_RPS: "0"
   RATE_LIMIT_BURST: "200"
+  # Share one rate limit across replicas through PostgreSQL.
+  RATE_LIMIT_STORE: "postgres"
+  # Set to your ingress controller's pod CIDR so X-Forwarded-For is believed
+  # and sign-in limits apply per client instead of per ingress pod.
+  # TRUSTED_PROXIES: "10.0.0.0/8"
+  # Only the first account can be created unless you open sign-up.
+  SIGNUP_ENABLED: "false"
   WORKER_CONCURRENCY: "10"
   WORKER_REQUEST_TIMEOUT: "15s"
   # terminationGracePeriodSeconds in worker-deployment.yaml must stay at least

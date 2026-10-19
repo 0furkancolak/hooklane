@@ -124,13 +124,24 @@ What is safe to scale, and how it coordinates:
 - **Migrations** take a PostgreSQL advisory lock, so two `migrate up` runs
   started together take turns and the second finds nothing to do. Running it
   from one place (the `migrate` service or Job) is still the simplest setup.
-- **Rate limiting** is per API replica and keyed by the connecting address,
-  and the API does not trust `X-Forwarded-For`. Behind a proxy that address
-  is the proxy, so every client would share one bucket per replica. The
-  production Compose file therefore sets the API's limit to 0 and enforces
-  `HOOKLANE_RATE_LIMIT_RPS` (default 50 per client address, burst 200) in
-  nginx, across all replicas. If you put another balancer in front of that
-  proxy, configure `set_real_ip_from` there or all clients look alike.
+- **Rate limiting** keeps counters per API replica by default. Set
+  `RATE_LIMIT_STORE=postgres` and all replicas share one limit, at the cost
+  of one small write per `/v1` request (counters live in an unlogged table;
+  if the database is unreachable requests are let through rather than
+  refused). The API keys clients by connection address, so behind a proxy
+  set `TRUSTED_PROXIES` to the proxy's addresses; only then is
+  `X-Forwarded-For` believed, and only from those addresses. The production
+  Compose file does this for its nginx and still enforces the main limit
+  there (`HOOKLANE_RATE_LIMIT_RPS`, default 50 per client address, burst 200).
+  Sign-up and sign-in have their own, tighter per-address limit (about one
+  attempt every five seconds, burst 10), which only works per client when
+  `TRUSTED_PROXIES` is set behind a proxy; without it everyone behind the
+  proxy would share one bucket.
+- **Accounts**: the dashboard signs people in with email and password
+  (argon2id, sessions last seven days). Only the first account can be created
+  unless `SIGNUP_ENABLED=true`. One user can own several organizations and
+  switch between them; there are no invitations yet, so an organization has
+  one owner. API keys keep working unchanged for machines.
 - **Metrics** are per process. Set `METRICS_ADDR` (the Compose file does) and
   scrape every replica; sum counters across them. Do not publish the metrics
   port.
@@ -237,6 +248,9 @@ startup with a message naming the variable.
 | `RETENTION_PERIOD` | `720h` | worker, admin | Delete finished events older than this; `0` disables. Minimum `1h`. |
 | `RATE_LIMIT_RPS` | `50` | api | Sustained requests per second per client address on `/v1`; `0` disables. Answers `429` with `Retry-After`. Each replica keeps its own counters, and forwarded headers are not trusted, so behind a reverse proxy limit there as well. |
 | `RATE_LIMIT_BURST` | `200` | api | Requests a client may send at once before `RATE_LIMIT_RPS` applies. |
+| `RATE_LIMIT_STORE` | `memory` | api | `memory` counts per replica; `postgres` shares one limit across replicas. |
+| `TRUSTED_PROXIES` | empty | api | Comma-separated IPs or CIDR ranges of reverse proxies whose `X-Forwarded-For` is believed. |
+| `SIGNUP_ENABLED` | `true` in development, `false` in production | api | Whether anyone can create a dashboard account. When false only the first account can be created. |
 | `LOG_FORMAT` | `json` (`pretty` when `APP_ENV=development`) | api, worker | `json` for log collectors, `pretty` for coloured one-line logs in a terminal. `LOG_COLOR=1` forces colour, `NO_COLOR` disables it. |
 
 ### API

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -79,12 +80,44 @@ func (l *rateLimiter) sweep(now time.Time) {
 	}
 }
 
+// allower decides whether a request from key may proceed and, when it may
+// not, how long the caller should wait.
+type allower interface {
+	Allow(ctx context.Context, key string) (bool, time.Duration)
+}
+
+// Allow makes the in-memory limiter an allower.
+func (l *rateLimiter) Allow(_ context.Context, key string) (bool, time.Duration) {
+	return l.allow(key)
+}
+
+// SharedCounter counts requests across API replicas (PostgreSQL).
+type SharedCounter interface {
+	Allow(ctx context.Context, key string) (bool, time.Duration, error)
+}
+
+// sharedAllower lets requests through when the shared counter is unavailable:
+// a database hiccup should not turn into an outage.
+type sharedAllower struct {
+	counter SharedCounter
+	onError func(error)
+}
+
+func (s sharedAllower) Allow(ctx context.Context, key string) (bool, time.Duration) {
+	ok, wait, err := s.counter.Allow(ctx, key)
+	if err != nil {
+		s.onError(err)
+		return true, 0
+	}
+	return ok, wait
+}
+
 // rateLimit rejects requests over the limit with 429 and a Retry-After. It
-// keys on the connection address; behind a reverse proxy configure the proxy
-// to limit instead, since forwarded headers are not trusted here.
-func rateLimit(limiter *rateLimiter) fiber.Handler {
+// keys on the client address: the connection address, or the forwarded one
+// when the connection comes from a configured trusted proxy.
+func rateLimit(limiter allower) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		ok, wait := limiter.allow(strings.Clone(c.IP()))
+		ok, wait := limiter.Allow(c.Context(), strings.Clone(c.IP()))
 		if ok {
 			return c.Next()
 		}
