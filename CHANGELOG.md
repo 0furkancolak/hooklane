@@ -7,36 +7,12 @@ include breaking changes, which are called out.
 
 ## [Unreleased]
 
-### Changed
-
-- The dashboard uses Inter (bundled, no external requests) and a single neutral palette: the dark theme now mirrors the light one, there is no accent colour apart from state colours, and the logo mark is replaced by the plain "Hooklane" wordmark.
-
-### Added
-
-- Dashboard accounts: sign up and sign in with email and password (argon2id; sessions are `hls_` bearer tokens that expire after seven days), one user in several organizations with a switcher, and `POST /v1/auth/{signup,signin,signout,organizations,switch-organization}` plus `GET /v1/auth/me`. Only the first account can be created in production unless `SIGNUP_ENABLED=true`. Sign-up and sign-in are rate limited per client address.
-- `RATE_LIMIT_STORE=postgres` shares the rate limit across API replicas, and `TRUSTED_PROXIES` makes the API believe `X-Forwarded-For` from the listed proxies only.
-- `hooklane-admin migrate up` holds a PostgreSQL advisory lock, so concurrent runs are safe.
-- One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
-- Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.
-- API key scopes: `admin`, `ingest` (send events only) and `read`, chosen when a key is created (dashboard and API). Existing keys stay `admin`. Revealing endpoint secrets now needs `admin`.
-- `LOG_FORMAT=pretty|json`: coloured one-line logs by default in development (JSON elsewhere).
-- The dashboard uses the full width of wide screens, and an empty list no longer draws a box inside a box.
-- The dashboard is available in English and Turkish (switch in the sidebar or on the sign-in screen; it follows the browser language at first and remembers the choice).
-- Lists share one filter bar and pagination: filters, page size and page are kept in the URL, with Previous/Next, the visible range and a rows-per-page selector. Deliveries can be filtered by status and endpoint, endpoints by state and events by type.
-- Playground: a guided page in every project that creates an endpoint, sends a test event and shows its deliveries, attempts and the request the receiver got. With `APP_ENV=development` it has a built-in receiver (`/v1/dev/sink/{token}`, which can simulate failures with `?status=`), and the dashboard can create projects.
-- A "What is Hooklane for?" section on the Projects page explains the purpose and benefits, and an empty project points to the playground.
-- Rate limiting on `/v1`: a token bucket per client address (`RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`; `0` disables) that answers `429` with `Retry-After`.
-- Redesigned dashboard: card layout, icon navigation, breadcrumbs, a delivery health overview with recent deliveries, and a light/dark theme switch.
-- `make check` runs gofmt, golangci-lint, the TypeScript typecheck, oxlint, all tests and govulncheck; CI runs the same checks.
-- `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.
-- Dashboard API keys page: generate a key for a project (shown once, with a copy button), see each key's prefix and status, and revoke it.
-- Sign-in screen with a feature overview and API status. With `APP_ENV=development` it can generate a development key (loopback requests only, `POST /v1/dev/api-keys`), so a database that was bootstrapped earlier no longer needs the admin CLI.
-
-## [0.1.0] - 2026-10-17
+## [0.1.0] - 2026-10-19
 
 First public release.
 
 ### Added
+
 - Organizations, projects and hashed API keys; `hooklane-admin bootstrap`
   creates the first set.
 - Endpoints with encrypted signing secrets; enable, disable, change URL.
@@ -57,6 +33,24 @@ First public release.
 - `hooklane-admin migrate` with embedded migrations; one container image for
   all processes; OpenAPI description at `/openapi.yaml`.
 - Example receivers in Go and Node.js.
+- Dashboard accounts: sign up and sign in with email and password (argon2id; sessions are `hls_` bearer tokens that expire after seven days), one user in several organizations with a switcher, and `POST /v1/auth/{signup,signin,signout,organizations,switch-organization}` plus `GET /v1/auth/me`. Only the first account can be created in production unless `SIGNUP_ENABLED=true`. Sign-up and sign-in are rate limited per client address.
+- `RATE_LIMIT_STORE=postgres` shares the rate limit across API replicas, and `TRUSTED_PROXIES` makes the API believe `X-Forwarded-For` from the listed proxies only.
+- `hooklane-admin migrate up` holds a PostgreSQL advisory lock, so concurrent runs are safe.
+- One-command install (`scripts/install.sh`) with a hardened production Compose file that scales (`--scale api=N --scale worker=N` behind an nginx proxy), Kubernetes manifests (`deploy/kubernetes`), a load-test tool (`make loadtest`), and deployment docs for running distributed, upgrades, backups and measured numbers.
+- Customers and the customer portal: endpoints and events can carry a `customer`; events reach only matching endpoints. `POST /v1/projects/{id}/portal-links` issues a time-limited link (`hlp_` token, stored hashed) that opens a page where that customer manages their own endpoints and sees their deliveries, through `/v1/portal/*` only.
+- API key scopes: `admin`, `ingest` (send events only) and `read`, chosen when a key is created (dashboard and API). Existing keys stay `admin`. Revealing endpoint secrets now needs `admin`.
+- `LOG_FORMAT=pretty|json`: coloured one-line logs by default in development (JSON elsewhere).
+- The dashboard uses the full width of wide screens, and an empty list no longer draws a box inside a box.
+- The dashboard is available in English and Turkish (switch in the sidebar or on the sign-in screen; it follows the browser language at first and remembers the choice).
+- Lists share one filter bar and pagination: filters, page size and page are kept in the URL, with Previous/Next, the visible range and a rows-per-page selector. Deliveries can be filtered by status and endpoint, endpoints by state and events by type.
+- Playground: a guided page in every project that creates an endpoint, sends a test event and shows its deliveries, attempts and the request the receiver got. With `APP_ENV=development` it has a built-in receiver (`/v1/dev/sink/{token}`, which can simulate failures with `?status=`), and the dashboard can create projects.
+- A "What is Hooklane for?" section on the Projects page explains the purpose and benefits, and an empty project points to the playground.
+- Rate limiting on `/v1`: a token bucket per client address (`RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`; `0` disables) that answers `429` with `Retry-After`.
+- Redesigned dashboard: card layout, icon navigation, breadcrumbs, a delivery health overview with recent deliveries, and a light/dark theme switch.
+- `make check` runs gofmt, golangci-lint, the TypeScript typecheck, oxlint, all tests and govulncheck; CI runs the same checks.
+- `make dev` starts PostgreSQL, migrations, the API, the worker and the dashboard with one command, and bootstraps a development API key on an empty database.
+- Dashboard API keys page: generate a key for a project (shown once, with a copy button), see each key's prefix and status, and revoke it.
+- Sign-in screen with a feature overview and API status. With `APP_ENV=development` it can generate a development key (loopback requests only, `POST /v1/dev/api-keys`), so a database that was bootstrapped earlier no longer needs the admin CLI.
 
 [Unreleased]: https://github.com/0furkancolak/hooklane/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/0furkancolak/hooklane/releases/tag/v0.1.0
