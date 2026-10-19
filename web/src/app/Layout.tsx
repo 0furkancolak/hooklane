@@ -34,8 +34,8 @@ export function Layout({ onSignOut }: { onSignOut: () => void }) {
           {productName}
         </a>
         {projectId ? <ProjectNav projectId={projectId} projectName={projectName} route={route} /> : <HomeNav />}
+        {api.isSession && <AccountMenu />}
         <div className="sidebar-foot">
-          {api.isSession && <AccountMenu />}
           <div className="segmented" role="group" aria-label={t("nav.language")}>
             {languages.map((l) => (
               <button key={l.code} type="button" aria-pressed={lang === l.code} onClick={() => setLang(l.code)}>
